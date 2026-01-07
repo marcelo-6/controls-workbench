@@ -1,6 +1,6 @@
 [project]
 name = "controls-workbench-backend"
-version = vv0.0.1
+version = v0.0.3
 description = "Add your description here"
 requires-python = ">=3.12"
 dependencies = [
