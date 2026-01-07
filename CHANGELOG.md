@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Make file release no edit in amend
+
+
+## [0.0.6] - 2026-01-07
+
+### Fixed
+
 - Makefile release recipe order changed to tags -> changelog -> commit amend
 
 
