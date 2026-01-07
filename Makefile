@@ -18,6 +18,9 @@ changelog:
 up:
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 
+build:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache 
+
 up-prod:
 	docker compose up --build
 

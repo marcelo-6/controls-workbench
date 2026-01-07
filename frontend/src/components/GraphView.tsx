@@ -109,16 +109,16 @@ export default function GraphView({ graph, report, summary }: Props) {
         .map((n: any) => n.id)
     );
 
-    const ns = nodes.filter((n) => keptNodeIds.has(n.id));
-    const es = edges.filter((e) => keptNodeIds.has(e.source) && keptNodeIds.has(e.target));
+    const ns = nodes.filter((n: { id: unknown; }) => keptNodeIds.has(n.id));
+    const es = edges.filter((e: { source: unknown; target: unknown; }) => keptNodeIds.has(e.source) && keptNodeIds.has(e.target));
     return { nodes: ns, edges: es };
   }, [nodes, edges, graph, typeFilter, search]);
 
   const autoLayout = () => {
-    const laid = layoutDagre(filtered.nodes, filtered.edges, "LR");
-    setNodes((prev) => {
+    const laid = layoutDagre(filtered.nodes, filtered.edges, "TB");
+    setNodes((prev: any[]) => {
       const pos = new Map(laid.nodes.map((n) => [n.id, n.position]));
-      return prev.map((n) => ({ ...n, position: pos.get(n.id) || n.position }));
+      return prev.map((n: { id: any; position: any; }) => ({ ...n, position: pos.get(n.id) || n.position }));
     });
     enqueueSnackbar("Auto layout applied", { variant: "info" });
   };
@@ -136,12 +136,12 @@ export default function GraphView({ graph, report, summary }: Props) {
             size="small"
             placeholder="Search nodes (label/path)"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e: { target: { value: any; }; }) => setSearch(e.target.value)}
             sx={{ minWidth: 260 }}
           />
 
           <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
-            {allTypes.map((t) => {
+            {allTypes.map((t: any) => {
               const on = typeFilter.includes(t);
               return (
                 <Chip
@@ -150,8 +150,8 @@ export default function GraphView({ graph, report, summary }: Props) {
                   label={t}
                   variant={on ? "filled" : "outlined"}
                   onClick={() => {
-                    setTypeFilter((prev) =>
-                      prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
+                    setTypeFilter((prev: any[]) =>
+                      prev.includes(t) ? prev.filter((x: any) => x !== t) : [...prev, t]
                     );
                   }}
                 />
@@ -182,7 +182,7 @@ export default function GraphView({ graph, report, summary }: Props) {
             nodes={filtered.nodes}
             edges={filtered.edges}
             fitView
-            onNodeClick={(_, n) => setSelected(n.data.raw)}
+            onNodeClick={(_: any, n: { data: { raw: any; }; }) => setSelected(n.data.raw)}
           >
             <MiniMap />
             <Controls />

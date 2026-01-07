@@ -14,13 +14,44 @@ const theme = createTheme({
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <SnackbarProvider maxSnack={4} autoHideDuration={3000}>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
-      </SnackbarProvider>
-    </ThemeProvider>
+    <BrowserRouter>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+          <SnackbarProvider
+            maxSnack={4}
+            preventDuplicate
+            dense
+            anchorOrigin={{ vertical: "top", horizontal: "right" }}
+            autoHideDuration={3000}
+            ComponentsProps={{
+              default: {
+                sx: {
+                  borderRadius: 2,
+                  boxShadow: 6,
+                  px: 1.5,
+                  py: 1,
+                  minWidth: 280,
+                  maxWidth: 520,
+                  fontSize: 14,
+                },
+              },
+              success: {
+                sx: { borderRadius: 2, boxShadow: 6, px: 1.5, py: 1, minWidth: 280, maxWidth: 520 },
+              },
+              info: {
+                sx: { borderRadius: 2, boxShadow: 6, px: 1.5, py: 1, minWidth: 280, maxWidth: 520 },
+              },
+              warning: {
+                sx: { borderRadius: 2, boxShadow: 6, px: 1.5, py: 1, minWidth: 280, maxWidth: 520 },
+              },
+              error: {
+                sx: { borderRadius: 2, boxShadow: 6, px: 1.5, py: 1, minWidth: 280, maxWidth: 520 },
+              },
+            }}
+          >
+            <App />
+          </SnackbarProvider>
+      </ThemeProvider>
+    </BrowserRouter>
   </React.StrictMode>
 );

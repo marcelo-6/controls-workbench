@@ -7,7 +7,7 @@ from .storage import data_path
 
 
 def run_dir(job_id: str) -> Path:
-    return data_path(job_id)
+    return data_path("runs", job_id)
 
 
 def meta_path(job_id: str) -> Path:

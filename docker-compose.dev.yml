@@ -38,6 +38,7 @@ services:
       # Helpful in WSL2 if watchers get flaky:
       # - CHOKIDAR_USEPOLLING=true
       - NODE_ENV=development
+    # command: ["sh", "-c", "pnpm install && pnpm dev --host 0.0.0.0 --port 5173"]
 
 volumes:
   frontend_node_modules:
