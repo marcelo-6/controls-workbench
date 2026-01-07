@@ -1,0 +1,56 @@
+services:
+  api:
+    build: ./backend
+    environment:
+      - APP_PASSWORD=${APP_PASSWORD}
+      - SECRET_KEY=${SECRET_KEY}
+      - DATA_DIR=${DATA_DIR}
+
+      - MAX_AGE_DAYS=${MAX_AGE_DAYS}
+      - MAX_RUNS_BYTES=${MAX_RUNS_BYTES}
+      - MAX_RUNS_COUNT=${MAX_RUNS_COUNT}
+      - MAX_UPLOAD_AGE_HOURS=${MAX_UPLOAD_AGE_HOURS}
+
+      - LOG_MAX_BYTES=${LOG_MAX_BYTES}
+      - LOG_BACKUP_COUNT=${LOG_BACKUP_COUNT}
+
+      - HUEY_DB=${HUEY_DB}
+      - HUEY_FSYNC=${HUEY_FSYNC}
+    volumes:
+      - data:${DATA_DIR}
+    expose:
+      - "8000"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  worker:
+    build: ./backend
+    environment:
+      - APP_PASSWORD=${APP_PASSWORD}
+      - SECRET_KEY=${SECRET_KEY}
+      - DATA_DIR=${DATA_DIR}
+
+      - MAX_AGE_DAYS=${MAX_AGE_DAYS}
+      - MAX_RUNS_BYTES=${MAX_RUNS_BYTES}
+      - MAX_RUNS_COUNT=${MAX_RUNS_COUNT}
+      - MAX_UPLOAD_AGE_HOURS=${MAX_UPLOAD_AGE_HOURS}
+
+      - LOG_MAX_BYTES=${LOG_MAX_BYTES}
+      - LOG_BACKUP_COUNT=${LOG_BACKUP_COUNT}
+
+      - HUEY_DB=${HUEY_DB}
+      - HUEY_FSYNC=${HUEY_FSYNC}
+    volumes:
+      - data:${DATA_DIR}
+    depends_on:
+      - api
+    command: ["huey_consumer.py", "app.queue.huey", "--workers=2", "--worker-type=thread"]
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
+volumes:
+  data:
