@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Generic, List, Optional, TypeVar
+from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -33,12 +33,12 @@ class ErrorField(APIModel):
 class APIError(APIModel):
     code: str
     detail: str
-    fields: List[ErrorField] = Field(default_factory=list)
+    fields: list[ErrorField] = Field(default_factory=list)
 
 
 class APIMeta(APIModel):
-    request_id: Optional[str] = None
-    timestamp_utc: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    request_id: str | None = None
+    timestamp_utc: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 T = TypeVar("T")
@@ -46,13 +46,14 @@ T = TypeVar("T")
 
 class APIResponse(APIModel, Generic[T]):
     status: Status
-    message: Optional[str] = None
-    data: Optional[T] = None
+    message: str | None = None
+    data: T | None = None
     meta: APIMeta = Field(default_factory=APIMeta)
-    error: Optional[APIError] = None
+    error: APIError | None = None
 
 
 # --------------------- Auth ---------------------
+
 
 class LoginRequest(APIModel):
     password: str
@@ -69,6 +70,7 @@ class MeResponse(APIModel):
 
 # --------------------- Tools ---------------------
 
+
 class ToolCategory(str, Enum):
     ignition = "Ignition"
 
@@ -81,10 +83,11 @@ class ToolInfo(APIModel):
 
 
 class ToolsList(APIModel):
-    tools: List[ToolInfo] = Field(default_factory=list)
+    tools: list[ToolInfo] = Field(default_factory=list)
 
 
 # --------------------- Uploads ---------------------
+
 
 class UploadFileInfo(APIModel):
     name: str
@@ -93,10 +96,11 @@ class UploadFileInfo(APIModel):
 
 class UploadCreated(APIModel):
     upload_id: str
-    received_files: List[UploadFileInfo] = Field(default_factory=list)
+    received_files: list[UploadFileInfo] = Field(default_factory=list)
 
 
 # --------------------- Jobs ---------------------
+
 
 class JobStatus(str, Enum):
     queued = "queued"
@@ -120,14 +124,14 @@ class JobState(APIModel):
     tool_id: str
     status: JobStatus
     created_at: datetime
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
-    progress_hint: Optional[str] = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    progress_hint: str | None = None
     artifacts_ready: bool = False
 
 
 class LinesPayload(APIModel):
-    lines: List[str] = Field(default_factory=list)
+    lines: list[str] = Field(default_factory=list)
 
 
 class ArtifactInfo(APIModel):
@@ -137,7 +141,7 @@ class ArtifactInfo(APIModel):
 
 
 class ArtifactsList(APIModel):
-    artifacts: List[ArtifactInfo] = Field(default_factory=list)
+    artifacts: list[ArtifactInfo] = Field(default_factory=list)
 
 
 class RunSummary(APIModel):
@@ -149,4 +153,4 @@ class RunSummary(APIModel):
 
 
 class RecentRuns(APIModel):
-    runs: List[RunSummary] = Field(default_factory=list)
+    runs: list[RunSummary] = Field(default_factory=list)

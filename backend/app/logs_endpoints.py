@@ -30,7 +30,12 @@ def latest(request: Request, name: str = Query(default="api"), user: str = Depen
 
 
 @router.get("/tail", response_model=APIResponse[LinesPayload])
-def tail(request: Request, n: int = Query(default=2000, ge=1, le=20000), name: str = Query(default="api"), user: str = Depends(require_auth)):
+def tail(
+    request: Request,
+    n: int = Query(default=2000, ge=1, le=20000),
+    name: str = Query(default="api"),
+    user: str = Depends(require_auth),
+):
     p = _log_path(name)
     lines = tail_lines(p, n)
     return ok(LinesPayload(lines=lines), request_id=getattr(request.state, "request_id", None))
@@ -48,4 +53,8 @@ def download(user: str = Depends(require_auth)):
             if fp.is_file():
                 z.write(fp, arcname=fp.name)
     mem.seek(0)
-    return StreamingResponse(mem, media_type="application/zip", headers={"Content-Disposition": "attachment; filename=logs.zip"})
+    return StreamingResponse(
+        mem,
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=logs.zip"},
+    )

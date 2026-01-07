@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import Optional
 
 from .storage import data_path
 
@@ -19,7 +18,7 @@ def file_sha256(p: Path) -> str:
     return h.hexdigest()
 
 
-def find_project_zip(upload_id: str) -> Optional[Path]:
+def find_project_zip(upload_id: str) -> Path | None:
     d = upload_dir(upload_id)
     if not d.exists():
         return None
@@ -29,7 +28,7 @@ def find_project_zip(upload_id: str) -> Optional[Path]:
     return None
 
 
-def find_tags_json(upload_id: str) -> Optional[Path]:
+def find_tags_json(upload_id: str) -> Path | None:
     d = upload_dir(upload_id)
     if not d.exists():
         return None

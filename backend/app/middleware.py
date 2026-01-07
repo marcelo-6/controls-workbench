@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
 
 from pydantic import Field
 
@@ -9,7 +8,7 @@ from .api_models import APIModel, JobStatus
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class InputFile(APIModel):
@@ -24,10 +23,10 @@ class Versions(APIModel):
 
 
 class Stats(APIModel):
-    parse_seconds: Optional[float] = None
-    nodes: Optional[int] = None
-    edges: Optional[int] = None
-    counts_by_type: Dict[str, int] = Field(default_factory=dict)
+    parse_seconds: float | None = None
+    nodes: int | None = None
+    edges: int | None = None
+    counts_by_type: dict[str, int] = Field(default_factory=dict)
 
 
 class RunMeta(APIModel):
@@ -35,7 +34,7 @@ class RunMeta(APIModel):
     tool_id: str
     created_at: datetime = Field(default_factory=utcnow)
     last_accessed_at: datetime = Field(default_factory=utcnow)
-    input_files: List[InputFile] = Field(default_factory=list)
+    input_files: list[InputFile] = Field(default_factory=list)
     versions: Versions = Field(default_factory=Versions)
     stats: Stats = Field(default_factory=Stats)
 
@@ -45,6 +44,6 @@ class RunState(APIModel):
     tool_id: str
     status: JobStatus
     created_at: datetime = Field(default_factory=utcnow)
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
-    progress_hint: Optional[str] = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    progress_hint: str | None = None

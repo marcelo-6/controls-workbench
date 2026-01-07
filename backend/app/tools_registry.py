@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Dict
 
 from .api_models import ToolCategory, ToolInfo
 
@@ -15,7 +15,7 @@ class Tool:
     runner: Callable[[str, str, dict], None]  # (job_id, upload_id, params) -> None
 
 
-TOOLS: Dict[str, Tool] = {}
+TOOLS: dict[str, Tool] = {}
 
 
 def register(tool: Tool) -> None:

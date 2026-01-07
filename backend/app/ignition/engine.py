@@ -5,12 +5,12 @@ import json
 import re
 import time
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any
 
 from .models import Confidence, GraphDoc, GraphEdge, GraphMeta, GraphNode
-
 
 _VIEW_COMPONENT_TYPES = {"ia.display.view", "ia.display.embeddedView"}
 _TAG_PATH_RE = re.compile(r"(\[[^\]]+\][A-Za-z0-9_./\-]+)")
@@ -53,7 +53,7 @@ def derive_query_path(q_file: Path, root: Path) -> str:
     return rel
 
 
-def walk_json(obj: Any, pointer: str = "") -> Iterable[Tuple[str, Any]]:
+def walk_json(obj: Any, pointer: str = "") -> Iterable[tuple[str, Any]]:
     yield pointer, obj
     if isinstance(obj, dict):
         for k, v in obj.items():
@@ -111,7 +111,9 @@ def extract_refs_from_script(text: str) -> dict[str, list[tuple[str, Confidence,
 
     # Views: system.perspective.openPopup("path") / navigate("path") / openView("path")
     view_patterns = [
-        re.compile(r"system\.perspective\.(?:openPopup|navigate|openView)\(\s*[\"\']([^\"\']+)[\"\']"),
+        re.compile(
+            r"system\.perspective\.(?:openPopup|navigate|openView)\(\s*[\"\']([^\"\']+)[\"\']"
+        ),
     ]
     for pat in view_patterns:
         for m in pat.finditer(text):
@@ -120,7 +122,9 @@ def extract_refs_from_script(text: str) -> dict[str, list[tuple[str, Confidence,
                 refs["views"].append((vp, Confidence.medium, f"script:{m.start()}"))
 
     # Tags: system.tag.readBlocking([...]) / writeBlocking([...])
-    tag_list_pat = re.compile(r"system\.tag\.(?:readBlocking|writeBlocking)\(\s*\[(.*?)\]", re.DOTALL)
+    tag_list_pat = re.compile(
+        r"system\.tag\.(?:readBlocking|writeBlocking)\(\s*\[(.*?)\]", re.DOTALL
+    )
     str_pat = re.compile(r"[\"\']([^\"\']+)[\"\']")
     for m in tag_list_pat.finditer(text):
         inside = m.group(1)
@@ -236,13 +240,21 @@ def build_graph(root: Path, job_id: str) -> tuple[GraphDoc, dict, str]:
                 type="script",
                 label=sf.stem,
                 path=sp,
-                data={"kind": "python_script", "source_file": sp, "metrics": {"bytes": sf.stat().st_size}},
+                data={
+                    "kind": "python_script",
+                    "source_file": sp,
+                    "metrics": {"bytes": sf.stat().st_size},
+                },
             )
         )
 
     # -------- index named queries (best effort) ----------
     # Heuristic: include .sql files and query.json files
-    query_files = [p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in {".sql", ".json"} and "query" in p.name.lower()]
+    query_files = [
+        p
+        for p in root.rglob("*")
+        if p.is_file() and p.suffix.lower() in {".sql", ".json"} and "query" in p.name.lower()
+    ]
     for qf in query_files:
         qp = derive_query_path(qf, root)
         nid = make_node_id("query", qp)
@@ -252,7 +264,11 @@ def build_graph(root: Path, job_id: str) -> tuple[GraphDoc, dict, str]:
                 type="query",
                 label=qf.stem,
                 path=qp,
-                data={"kind": "named_query", "source_file": qp, "metrics": {"bytes": qf.stat().st_size}},
+                data={
+                    "kind": "named_query",
+                    "source_file": qp,
+                    "metrics": {"bytes": qf.stat().st_size},
+                },
             )
         )
 
@@ -392,11 +408,15 @@ def build_graph(root: Path, job_id: str) -> tuple[GraphDoc, dict, str]:
     broken_refs = []
     for e in edge_list:
         if e.target in missing_ids:
-            broken_refs.append({"source": e.source, "target": e.target, "type": e.type, "evidence": e.evidence})
+            broken_refs.append(
+                {"source": e.source, "target": e.target, "type": e.type, "evidence": e.evidence}
+            )
 
     # cycles (exclude missing nodes)
     core_nodes = [n.id for n in node_list if n.id not in missing_ids]
-    core_edges = [(e.source, e.target) for e in edge_list if e.source in core_nodes and e.target in core_nodes]
+    core_edges = [
+        (e.source, e.target) for e in edge_list if e.source in core_nodes and e.target in core_nodes
+    ]
     sccs = compute_scc(core_nodes, core_edges)
 
     # top lists
@@ -441,7 +461,7 @@ def build_graph(root: Path, job_id: str) -> tuple[GraphDoc, dict, str]:
 
 - Job: `{job_id}`
 - Tool: `ignition.graph`
-- Created: {datetime.now(timezone.utc).isoformat()}
+- Created: {datetime.now(UTC).isoformat()}
 - Parse seconds: {meta.stats.get("parse_seconds")}
 - Nodes: {meta.stats.get("nodes")}
 - Edges: {meta.stats.get("edges")}

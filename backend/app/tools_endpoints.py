@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import PlainTextResponse
 
 from .api_models import APIModel, APIResponse, ToolsList
 from .api_response import ok
@@ -61,4 +59,7 @@ def get_summary(request: Request, job_id: str, user: str = Depends(require_auth)
     fp = run_dir(job_id) / "report" / "summary.md"
     if not fp.exists():
         raise HTTPException(status_code=404, detail="Summary not found")
-    return ok(SummaryPayload(markdown=fp.read_text(encoding="utf-8")), request_id=getattr(request.state, "request_id", None))
+    return ok(
+        SummaryPayload(markdown=fp.read_text(encoding="utf-8")),
+        request_id=getattr(request.state, "request_id", None),
+    )

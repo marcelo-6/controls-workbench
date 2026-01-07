@@ -4,16 +4,15 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
-from fastapi.responses import JSONResponse
 
 from .api_models import APIResponse, UploadCreated, UploadFileInfo
 from .api_response import ok
 from .auth import require_auth
-from .storage import data_path
 from .uploads_storage import upload_dir
 
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
-
+PROJECT_ZIP_FILE = File(...)
+TAGS_JSON_FILE = File(default=None)
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
 
@@ -27,7 +26,9 @@ def _save_upload(dst: Path, up: UploadFile) -> int:
                 break
             size += len(chunk)
             if size > MAX_UPLOAD_BYTES:
-                raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Upload too large")
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Upload too large"
+                )
             f.write(chunk)
     return size
 
@@ -35,8 +36,8 @@ def _save_upload(dst: Path, up: UploadFile) -> int:
 @router.post("", response_model=APIResponse[UploadCreated])
 def create_upload(
     request: Request,
-    project_zip: UploadFile = File(...),
-    tags_json: UploadFile | None = File(default=None),
+    project_zip: UploadFile = PROJECT_ZIP_FILE,
+    tags_json: UploadFile | None = TAGS_JSON_FILE,
     user: str = Depends(require_auth),
 ):
     if not project_zip.filename or not project_zip.filename.lower().endswith(".zip"):
@@ -59,7 +60,11 @@ def create_upload(
         json_size = _save_upload(json_path, tags_json)
         received.append(UploadFileInfo(name=json_path.name, size_bytes=json_size))
 
-    return ok(UploadCreated(upload_id=upload_id, received_files=received), message="Upload received", request_id=getattr(request.state, "request_id", None))
+    return ok(
+        UploadCreated(upload_id=upload_id, received_files=received),
+        message="Upload received",
+        request_id=getattr(request.state, "request_id", None),
+    )
 
 
 @router.get("/{upload_id}", response_model=APIResponse[UploadCreated])
@@ -71,4 +76,7 @@ def get_upload(request: Request, upload_id: str, user: str = Depends(require_aut
     for fp in d.iterdir():
         if fp.is_file():
             received.append(UploadFileInfo(name=fp.name, size_bytes=fp.stat().st_size))
-    return ok(UploadCreated(upload_id=upload_id, received_files=received), request_id=getattr(request.state, "request_id", None))
+    return ok(
+        UploadCreated(upload_id=upload_id, received_files=received),
+        request_id=getattr(request.state, "request_id", None),
+    )

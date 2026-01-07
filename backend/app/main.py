@@ -8,20 +8,22 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
-from .api_models import APIResponse, ErrorField
+from .api_models import ErrorField
 from .api_response import fail
-from .config import settings
-from .logging_conf import setup_logger
-from .middleware import RequestIdMiddleware
-from .retention import cleanup_runs, cleanup_uploads
-from .storage import ensure_dirs
 
 # Routers
 from .auth import router as auth_router
-from .uploads_endpoints import router as uploads_router
-from .jobs_endpoints import router as jobs_router, runs_router
-from .tools_endpoints import router as tools_router, ign as ignition_router
+from .config import settings
+from .jobs_endpoints import router as jobs_router
+from .jobs_endpoints import runs_router
+from .logging_conf import setup_logger
 from .logs_endpoints import router as logs_router
+from .middleware import RequestIdMiddleware
+from .retention import cleanup_runs, cleanup_uploads
+from .storage import ensure_dirs
+from .tools_endpoints import ign as ignition_router
+from .tools_endpoints import router as tools_router
+from .uploads_endpoints import router as uploads_router
 
 ensure_dirs()
 api_logger = setup_logger("api", str(Path(settings.data_dir) / "logs" / "api.log"))
@@ -29,7 +31,9 @@ api_logger = setup_logger("api", str(Path(settings.data_dir) / "logs" / "api.log
 app = FastAPI(title="Controls Workbench API", version="0.1.0")
 
 app.add_middleware(RequestIdMiddleware)
-app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, same_site="lax", https_only=False)
+app.add_middleware(
+    SessionMiddleware, secret_key=settings.secret_key, same_site="lax", https_only=False
+)
 
 
 @app.get("/api/health")
@@ -42,7 +46,9 @@ async def http_exc_handler(request: Request, exc: HTTPException):
     rid = getattr(request.state, "request_id", None)
     return JSONResponse(
         status_code=exc.status_code,
-        content=fail(code="HTTP_ERROR", detail=str(exc.detail), request_id=rid).model_dump(by_alias=True),
+        content=fail(code="HTTP_ERROR", detail=str(exc.detail), request_id=rid).model_dump(
+            by_alias=True
+        ),
     )
 
 
@@ -53,7 +59,9 @@ async def validation_exc_handler(request: Request, exc: RequestValidationError):
     for err in exc.errors():
         loc = ".".join(str(x) for x in err.get("loc", []) if x != "body")
         fields.append(ErrorField(field=loc or "body", message=err.get("msg", "Invalid value")))
-    resp = fail(code="VALIDATION_ERROR", detail="Request validation failed", request_id=rid, fields=fields)
+    resp = fail(
+        code="VALIDATION_ERROR", detail="Request validation failed", request_id=rid, fields=fields
+    )
     return JSONResponse(status_code=422, content=resp.model_dump(by_alias=True))
 
 

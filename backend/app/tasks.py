@@ -3,10 +3,9 @@ from __future__ import annotations
 import json
 import shutil
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
-from .api_models import JobStatus
+from .api_models import JobStatus, ToolCategory
 from .config import settings
 from .ignition.engine import build_graph
 from .ignition.parser import safe_extract_zip
@@ -14,9 +13,8 @@ from .logging_conf import setup_logger
 from .queue import huey
 from .run_models import InputFile, RunMeta, RunState, Stats, Versions, utcnow
 from .run_storage import append_event, run_dir, write_meta, write_state
-from .uploads_storage import file_sha256, find_project_zip, find_tags_json, upload_dir
 from .tools_registry import Tool, register
-from .api_models import ToolCategory
+from .uploads_storage import file_sha256, find_project_zip, find_tags_json
 
 worker_logger = setup_logger("worker", str(Path(settings.data_dir) / "logs" / "worker.log"))
 
@@ -53,13 +51,21 @@ def run_ignition_graph(job_id: str, upload_id: str, params: dict) -> None:
         created_at=utcnow(),
         last_accessed_at=utcnow(),
         input_files=[
-            InputFile(name=proj_copy.name, size_bytes=proj_copy.stat().st_size, sha256=file_sha256(proj_copy)),
+            InputFile(
+                name=proj_copy.name,
+                size_bytes=proj_copy.stat().st_size,
+                sha256=file_sha256(proj_copy),
+            ),
         ],
         versions=Versions(app_version="0.1.0", parser_version="0.1.0"),
         stats=Stats(),
     )
     if tag_copy:
-        meta.input_files.append(InputFile(name=tag_copy.name, size_bytes=tag_copy.stat().st_size, sha256=file_sha256(tag_copy)))
+        meta.input_files.append(
+            InputFile(
+                name=tag_copy.name, size_bytes=tag_copy.stat().st_size, sha256=file_sha256(tag_copy)
+            )
+        )
 
     write_meta(meta)
 
@@ -82,7 +88,9 @@ def run_ignition_graph(job_id: str, upload_id: str, params: dict) -> None:
     (rd / "graph").mkdir(parents=True, exist_ok=True)
     (rd / "report").mkdir(parents=True, exist_ok=True)
 
-    (rd / "graph" / "graph.json").write_text(graph.model_dump_json(by_alias=True, indent=2), encoding="utf-8")
+    (rd / "graph" / "graph.json").write_text(
+        graph.model_dump_json(by_alias=True, indent=2), encoding="utf-8"
+    )
     _write_json(rd / "report" / "report.json", report)
     (rd / "report" / "summary.md").write_text(summary_md, encoding="utf-8")
 
@@ -133,6 +141,8 @@ register(
         name="Ignition Project Explorer Graph",
         category=ToolCategory.ignition,
         version="0.1.0",
-        runner=lambda job_id, upload_id, params: run_tool_job(job_id, "ignition.graph", upload_id, params),
+        runner=lambda job_id, upload_id, params: run_tool_job(
+            job_id, "ignition.graph", upload_id, params
+        ),
     )
 )

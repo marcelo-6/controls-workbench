@@ -1,17 +1,14 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 
 from .api_models import (
     APIResponse,
-    ArtifactsList,
     ArtifactInfo,
+    ArtifactsList,
     CreateJobRequest,
     JobCreated,
     JobState,
@@ -26,11 +23,9 @@ from .run_models import RunMeta, RunState, utcnow
 from .run_storage import (
     append_event,
     events_path,
-    meta_path,
     read_meta,
     read_state,
     run_dir,
-    state_path,
     tail_lines,
     touch_meta_access,
     write_meta,
@@ -45,7 +40,11 @@ router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 def _artifacts_ready(job_id: str) -> bool:
     rd = run_dir(job_id)
-    return (rd / "graph" / "graph.json").exists() and (rd / "report" / "report.json").exists() and (rd / "report" / "summary.md").exists()
+    return (
+        (rd / "graph" / "graph.json").exists()
+        and (rd / "report" / "report.json").exists()
+        and (rd / "report" / "summary.md").exists()
+    )
 
 
 @router.post("", response_model=APIResponse[JobCreated])
@@ -58,10 +57,14 @@ def create_job(request: Request, body: CreateJobRequest, user: str = Depends(req
     job_id = str(uuid.uuid4())
 
     # Initialize run files
-    meta = RunMeta(job_id=job_id, tool_id=body.tool_id, created_at=utcnow(), last_accessed_at=utcnow())
+    meta = RunMeta(
+        job_id=job_id, tool_id=body.tool_id, created_at=utcnow(), last_accessed_at=utcnow()
+    )
     write_meta(meta)
 
-    state = RunState(job_id=job_id, tool_id=body.tool_id, status=JobStatus.queued, created_at=utcnow())
+    state = RunState(
+        job_id=job_id, tool_id=body.tool_id, status=JobStatus.queued, created_at=utcnow()
+    )
     write_state(state)
 
     append_event(job_id, "Job queued")
@@ -69,7 +72,11 @@ def create_job(request: Request, body: CreateJobRequest, user: str = Depends(req
     # Enqueue
     run_tool_job(job_id, body.tool_id, body.upload_id, body.params)
 
-    return ok(JobCreated(job_id=job_id), message="Job created", request_id=getattr(request.state, "request_id", None))
+    return ok(
+        JobCreated(job_id=job_id),
+        message="Job created",
+        request_id=getattr(request.state, "request_id", None),
+    )
 
 
 @router.get("/{job_id}", response_model=APIResponse[JobState])
@@ -95,7 +102,12 @@ def get_job(request: Request, job_id: str, user: str = Depends(require_auth)):
 
 
 @router.get("/{job_id}/events", response_model=APIResponse[LinesPayload])
-def get_events(request: Request, job_id: str, tail: int = Query(default=2000, ge=1, le=20000), user: str = Depends(require_auth)):
+def get_events(
+    request: Request,
+    job_id: str,
+    tail: int = Query(default=2000, ge=1, le=20000),
+    user: str = Depends(require_auth),
+):
     p = events_path(job_id)
     lines = tail_lines(p, tail)
     return ok(LinesPayload(lines=lines), request_id=getattr(request.state, "request_id", None))
@@ -118,7 +130,9 @@ def list_artifacts(request: Request, job_id: str, user: str = Depends(require_au
                     url=f"/api/jobs/{job_id}/artifact?path={rel}",
                 )
             )
-    return ok(ArtifactsList(artifacts=artifacts), request_id=getattr(request.state, "request_id", None))
+    return ok(
+        ArtifactsList(artifacts=artifacts), request_id=getattr(request.state, "request_id", None)
+    )
 
 
 @router.get("/{job_id}/artifact")
@@ -137,7 +151,11 @@ runs_router = APIRouter(prefix="/api/runs", tags=["runs"])
 
 
 @runs_router.get("/recent", response_model=APIResponse[RecentRuns])
-def recent_runs(request: Request, limit: int = Query(default=20, ge=1, le=200), user: str = Depends(require_auth)):
+def recent_runs(
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=200),
+    user: str = Depends(require_auth),
+):
     runs_root = run_dir("").parent
     items = []
     if runs_root.exists():

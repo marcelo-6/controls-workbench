@@ -1,0 +1,56 @@
+[project]
+name = "controls-workbench-backend"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.128.0",
+    "huey>=2.6.0",
+    "pydantic>=2.12.5",
+    "python-multipart>=0.0.21",
+    "uvicorn[standard]>=0.40.0",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.1",
+]
+lint = [
+    "mypy>=1.19.1",
+    "ruff>=0.14.10",
+]
+test = [
+    "pytest>=9.0.2",
+]
+
+[tool.uv]
+# Include dev by default; you can also add lint/test here if you want.
+default-groups = ["dev", "lint", "test"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["alembic", ".venv"]
+
+[tool.ruff.lint]
+# Start strong but not annoying:
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501", "UP046", "UP047"]  # Let formatter handle wrapping
+
+[tool.ruff.format]
+# Formatter options: docs show the section and supported keys. :contentReference[oaicite:7]{index=7}
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_ignores = true
+no_implicit_optional = true
+strict_optional = true
+check_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -22,18 +22,33 @@ def login(request: Request, body: LoginRequest):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password")
     request.session["authed"] = True
     request.session["username"] = "user"
-    return ok(LoginResponse(ok=True), message="Logged in", request_id=getattr(request.state, "request_id", None))
+    return ok(
+        LoginResponse(ok=True),
+        message="Logged in",
+        request_id=getattr(request.state, "request_id", None),
+    )
 
 
 @router.get("/me", response_model=APIResponse[MeResponse])
 def me(request: Request):
     authed = bool(request.session.get("authed"))
     if not authed:
-        return ok(MeResponse(ok=False, username=""), message="Not logged in", request_id=getattr(request.state, "request_id", None))
-    return ok(MeResponse(ok=True, username=request.session.get("username", "user")), request_id=getattr(request.state, "request_id", None))
+        return ok(
+            MeResponse(ok=False, username=""),
+            message="Not logged in",
+            request_id=getattr(request.state, "request_id", None),
+        )
+    return ok(
+        MeResponse(ok=True, username=request.session.get("username", "user")),
+        request_id=getattr(request.state, "request_id", None),
+    )
 
 
 @router.post("/logout", response_model=APIResponse[LoginResponse])
 def logout(request: Request, user: str = Depends(require_auth)):
     request.session.clear()
-    return ok(LoginResponse(ok=True), message="Logged out", request_id=getattr(request.state, "request_id", None))
+    return ok(
+        LoginResponse(ok=True),
+        message="Logged out",
+        request_id=getattr(request.state, "request_id", None),
+    )

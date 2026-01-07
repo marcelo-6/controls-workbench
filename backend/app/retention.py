@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import shutil
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from .config import settings
@@ -24,12 +24,12 @@ def cleanup_uploads() -> int:
     uploads = data_path("uploads")
     if not uploads.exists():
         return 0
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=settings.max_upload_age_hours)
+    cutoff = datetime.now(UTC) - timedelta(hours=settings.max_upload_age_hours)
     deleted = 0
     for d in uploads.iterdir():
         if not d.is_dir():
             continue
-        mtime = datetime.fromtimestamp(d.stat().st_mtime, tz=timezone.utc)
+        mtime = datetime.fromtimestamp(d.stat().st_mtime, tz=UTC)
         if mtime < cutoff:
             shutil.rmtree(d, ignore_errors=True)
             deleted += 1
@@ -51,8 +51,8 @@ def cleanup_runs() -> dict:
             accessed = meta.last_accessed_at
         else:
             st = d.stat()
-            created = datetime.fromtimestamp(st.st_ctime, tz=timezone.utc)
-            accessed = datetime.fromtimestamp(st.st_mtime, tz=timezone.utc)
+            created = datetime.fromtimestamp(st.st_ctime, tz=UTC)
+            accessed = datetime.fromtimestamp(st.st_mtime, tz=UTC)
         size = _dir_size_bytes(d)
         runs.append((job_id, d, created, accessed, size))
 
@@ -65,7 +65,7 @@ def cleanup_runs() -> dict:
     # LRU trim if over size/count
     if total_bytes > settings.max_runs_bytes or total_count > settings.max_runs_count:
         runs_sorted = sorted(runs, key=lambda x: x[3])  # last accessed asc
-        for job_id, d, created, accessed, size in runs_sorted:
+        for _job_id, d, _created, _accessed, size in runs_sorted:
             if total_bytes <= settings.max_runs_bytes and total_count <= settings.max_runs_count:
                 break
             shutil.rmtree(d, ignore_errors=True)
@@ -75,8 +75,8 @@ def cleanup_runs() -> dict:
             total_count -= 1
 
     # TTL trim
-    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.max_age_days)
-    for job_id, d, created, accessed, size in runs:
+    cutoff = datetime.now(UTC) - timedelta(days=settings.max_age_days)
+    for _job_id, d, _created, _accessed, size in runs:
         if created < cutoff and d.exists():
             shutil.rmtree(d, ignore_errors=True)
             deleted += 1
