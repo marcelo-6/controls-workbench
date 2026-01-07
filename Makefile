@@ -14,3 +14,12 @@ precommit:
 
 changelog:
 	git-cliff -o CHANGELOG.md
+
+up:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
+up-prod:
+	docker compose up --build
+
+zip:
+	zip -r controls-workbench-src.zip . -x "*/.git/*" "*/.venv/*" "*/node_modules/*" "*/data/*" "*/dist/*" "*/build/*" "*/__pycache__/*"

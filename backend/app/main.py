@@ -70,7 +70,7 @@ async def unhandled_exc_handler(request: Request, exc: Exception):
     rid = getattr(request.state, "request_id", None)
     api_logger.exception("Unhandled error request_id=%s: %s", rid, exc)
     resp = fail(code="INTERNAL_ERROR", detail="Internal server error", request_id=rid)
-    return JSONResponse(status_code=500, content=resp.model_dump(by_alias=True))
+    return JSONResponse(status_code=500, content=resp.model_dump(mode="json", by_alias=True))
 
 
 # Include routers
@@ -85,7 +85,7 @@ app.include_router(logs_router)
 
 async def _retention_loop():
     # small, safe loop; deletes old uploads and trims runs
-    while True:
+    while False:  # TODO this should be run once when the user uploads something
         try:
             del_uploads = cleanup_uploads()
             run_stats = cleanup_runs()

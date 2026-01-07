@@ -1,0 +1,43 @@
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./backend/app:/app/app
+      - data:/data
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./backend/app:/app/app
+      - data:/data
+    depends_on:
+      - api
+    command: ["huey_consumer.py", "app.queue.huey"]
+    # Optional: if you add watchfiles in dev deps, use auto-reload worker:
+    # command: ["sh","-c","watchfiles --filter python 'huey_consumer.py app.queue.huey' /app/app"]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+    environment:
+      # Helpful in WSL2 if watchers get flaky:
+      # - CHOKIDAR_USEPOLLING=true
+      - NODE_ENV=development
+
+volumes:
+  frontend_node_modules:

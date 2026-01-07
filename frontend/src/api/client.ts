@@ -38,9 +38,8 @@ export class ApiClient {
       return payload.data;
     }
 
-    // fallback
-    // @ts-expect-error - for non-json endpoints, caller should use fetch directly
-    return (await res.text()) as T;
+    // fallback (non-json endpoints)
+    return (await res.text()) as unknown as T;
   }
 
   async login(password: string): Promise<void> {

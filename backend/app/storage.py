@@ -6,8 +6,9 @@ from pathlib import Path
 from .config import settings
 
 
-def data_path(*parts: str) -> str:
-    return str(Path(settings.data_dir, *parts))
+def data_path(*parts: str) -> Path:
+    """Return a path under DATA_DIR as a pathlib.Path."""
+    return Path(settings.data_dir, *parts)
 
 
 def ensure_dirs() -> None:

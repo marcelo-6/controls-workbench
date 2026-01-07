@@ -17,3 +17,9 @@ dist/
 
 # Data
 data/
+
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+example files/
+controls-*.zip

@@ -31,6 +31,7 @@ from .run_storage import (
     write_meta,
     write_state,
 )
+from .storage import data_path
 from .tasks import run_tool_job
 from .tools_registry import TOOLS
 from .uploads_storage import upload_dir
@@ -156,7 +157,7 @@ def recent_runs(
     limit: int = Query(default=20, ge=1, le=200),
     user: str = Depends(require_auth),
 ):
-    runs_root = run_dir("").parent
+    runs_root = data_path("runs")
     items = []
     if runs_root.exists():
         for d in runs_root.iterdir():
