@@ -98,5 +98,5 @@ commit-all:
 # ----------------------------------------
 tag:
 	$(call run, git tag $(VERSION))
-	$(call run, git push)
-	$(call run, git push --tags)
+# 	$(call run, git push)
+# 	$(call run, git push --tags)
