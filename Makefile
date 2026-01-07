@@ -80,24 +80,25 @@ update-frontend:
 	@echo "Updating frontend version in $(FRONTEND_FILE)"
 	$(call run, sed -i 's/"version":[[:space:]]*".*"/"version": "$(ESCAPED_VERSION)"/' $(FRONTEND_FILE))
 # ----------------------------------------
-# 4. Generate changelog
+# 4. Tag the release
+# ----------------------------------------
+tag:
+	$(call run, git tag $(VERSION))
+# 	$(call run, git push)
+# 	$(call run, git push --tags)
+
+# ----------------------------------------
+# 5. Generate changelog
 # ----------------------------------------
 changelog-gen:
 	@echo "Generating changelog..."
 	$(call run, git cliff -o CHANGELOG.md)
 
 # ----------------------------------------
-# 5. Amend the latest commit instead of creating a new one
+# 6. Amend the latest commit instead of creating a new one
 # ----------------------------------------
 commit-all:
 	@echo "Amending latest commit with version bump changes"
 	$(call run, git add .)
 	$(call run, git commit --amend || echo "Nothing to amend.")
 
-# ----------------------------------------
-# 6. Tag the release
-# ----------------------------------------
-tag:
-	$(call run, git tag $(VERSION))
-# 	$(call run, git push)
-# 	$(call run, git push --tags)
