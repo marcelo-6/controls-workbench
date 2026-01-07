@@ -32,8 +32,6 @@ RAW_VERSION := $(shell git-cliff --bumped-version 2>/dev/null)
 VERSION ?= $(RAW_VERSION)
 DRY_RUN ?= 0
 
-check = $(shell echo "RAW_VERSION $(RAW_VERSION)")
-
 FRONTEND_DIR = frontend
 BACKEND_DIR = backend
 BACKEND_FILE = $(BACKEND_DIR)/pyproject.toml
@@ -43,7 +41,7 @@ FRONTEND_FILE = $(FRONTEND_DIR)/package.json
 VALID_VERSION = $(shell echo "$(VERSION)" | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$$' || true)
 
 # Escape version for sed
-ESCAPED_VERSION = $(shell printf '%s\n' "v$(VERSION)" | sed 's/[&/\]/\\&/g')
+ESCAPED_VERSION = $(shell printf '%s\n' "$(VERSION)" | sed 's/[&/\]/\\&/g')
 
 define run
 	@if [ "$(DRY_RUN)" = "1" ]; then \
@@ -93,12 +91,12 @@ changelog-gen:
 # ----------------------------------------
 commit-all:
 	$(call run, git add .)
-	$(call run, git commit -m "chore: release v$(VERSION)" || echo "Nothing to commit.")
+	$(call run, git commit -m "chore: release $(VERSION)" || echo "Nothing to commit.")
 
 # ----------------------------------------
 # 6. Tag the release
 # ----------------------------------------
 tag:
-	$(call run, git tag v$(VERSION))
+	$(call run, git tag $(VERSION))
 	$(call run, git push)
 	$(call run, git push --tags)
