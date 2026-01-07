@@ -92,7 +92,7 @@ changelog-gen:
 commit-all:
 	@echo "Amending latest commit with version bump changes"
 	$(call run, git add .)
-	$(call run, git commit --amend -m "chore: release v$(VERSION)" || echo "Nothing to amend.")
+	$(call run, git commit --amend || echo "Nothing to amend.")
 
 # ----------------------------------------
 # 6. Tag the release
