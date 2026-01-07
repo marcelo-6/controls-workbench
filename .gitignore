@@ -24,3 +24,4 @@ data/
 .mypy_cache/
 example files/
 controls-*.zip
+.vscode

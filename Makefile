@@ -78,7 +78,7 @@ update-backend:
 # ----------------------------------------
 update-frontend:
 	@echo "Updating frontend version in $(FRONTEND_FILE)"
-	$(call run, sed -i 's/"version": *".*"/"version": "$(ESCAPED_VERSION)"/' $(FRONTEND_FILE))
+	$(call run, sed -i 's/"version":[[:space:]]*".*"/"version": "$(ESCAPED_VERSION)"/' $(FRONTEND_FILE))
 # ----------------------------------------
 # 4. Generate changelog
 # ----------------------------------------
@@ -87,11 +87,12 @@ changelog-gen:
 	$(call run, git cliff -o CHANGELOG.md)
 
 # ----------------------------------------
-# 5. Commit all changes
+# 5. Amend the latest commit instead of creating a new one
 # ----------------------------------------
 commit-all:
+	@echo "Amending latest commit with version bump changes"
 	$(call run, git add .)
-	$(call run, git commit -m "chore: release $(VERSION)" || echo "Nothing to commit.")
+	$(call run, git commit --amend -m "chore: release v$(VERSION)" || echo "Nothing to amend.")
 
 # ----------------------------------------
 # 6. Tag the release
