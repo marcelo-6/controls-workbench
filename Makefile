@@ -169,7 +169,8 @@ endef
 	clean_python_cache clean_pnpm_cache clean_frontend_build clean_all \
 	bump-version update-backend-version update-frontend-version update-versions \
 	commit-release tag-release push-release \
-	prepare-release release
+	prepare-release release \
+	up build build-all-no-cache build-frontend up-prod zip
 
 # ----------------------------
 # Help
@@ -260,6 +261,29 @@ install-frontend: ## Install frontend deps (pnpm)
 	$(call LOG,install-frontend,Installing frontend dependencies...)
 	$(call RUN,install-frontend,cd "$(FRONTEND_DIR)" && "$(PNPM)" install --frozen-lockfile)
 	$(call OK,install-frontend,Frontend dependencies installed)
+
+# ----------------------------
+# Docker / Packaging
+# ----------------------------
+up: ## docker compose up (dev overrides)
+	$(call RUN,up,docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build)
+
+build-all-no-cache: ## docker compose build (dev overrides, no cache)
+	$(call RUN,build,docker compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache)
+
+build: ## docker compose build (dev overrides, cache)
+	$(call RUN,build,docker compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache)
+
+build-frontend: ## docker compose build (dev overrides, no cache only for frontend)
+	$(call RUN,build,docker compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache frontend)
+
+up-prod: ## docker compose up (prod)
+	$(call RUN,up-prod,docker compose up --build)
+
+zip: ## Zip source tree (excluding common junk)
+	$(call RUN,zip,zip -r controls-workbench-src.zip . \
+		-x "*/.git/*" "*/.venv/*" "*/node_modules/*" "*/data/*" "*/dist/*" "*/build/*" "*/__pycache__/*")
+
 
 # ----------------------------
 # Changelog
