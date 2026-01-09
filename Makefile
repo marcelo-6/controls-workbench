@@ -287,19 +287,10 @@ update-backend-version: ## Update backend/pyproject.toml version (uv if availabl
 		$(PY) -c "import re,sys,pathlib; p=pathlib.Path('pyproject.toml'); expected=sys.argv[1]; t=p.read_text(encoding='utf-8'); m=re.search(r'(?m)^version\\s*=\\s*\\\"([^\\\"]+)\\\"\\s*$$', t); assert m, 'ERROR: Could not read version from {}'.format(p); actual=m.group(1); assert actual==expected, 'ERROR: pyproject.toml version mismatch. expected={}, actual={}'.format(expected, actual); print('Verified backend version:', actual)" "$(NORMALIZED_VERSION)"; \
 	})
 
-# update-backend-version: ## Update backend/pyproject.toml version (uv if available; python fallback)
-# 	@printf "Updating backend version -> %s\n" "$(NORMALIZED_VERSION)"
-# 	$(call RUN,cd $(BACKEND_DIR) && ( \
-# 		$(UV) version $(NORMALIZED_VERSION) >/dev/null 2>&1 || \
-# 		$(UV) version --set $(NORMALIZED_VERSION) >/dev/null 2>&1 || \
-# 		$(PY) -c "import re,sys,pathlib; p=pathlib.Path('pyproject.toml'); v=sys.argv[1]; t=p.read_text(encoding='utf-8'); new,n=re.subn(r'(?m)^(version\\s*=\\s*\")[^\"]*(\")', lambda m: m.group(1)+v+m.group(2), t, count=1); (n==1) or (_ for _ in ()).throw(SystemExit('ERROR: version = \"...\" not found in {}'.format(p))); p.write_text(new, encoding='utf-8')" "$(NORMALIZED_VERSION)" ))
-
-update-frontend-version: ## Update frontend/package.json version (keeps one-line JSON)
+update-frontend-version: ## Update frontend/package.json version (keeps one-line JSON) + verify
 	@printf "Updating frontend version -> %s\n" "$(NORMALIZED_VERSION)"
-	$(call RUN,$(PY) -c "import json,sys,pathlib; p=pathlib.Path(sys.argv[1]); v=sys.argv[2]; \
-d=json.loads(p.read_text(encoding='utf-8')); d['version']=v; \
-p.write_text(json.dumps(d, separators=(',',':'))+'\\n', encoding='utf-8')" \
-"$(FRONTEND_FILE)" "$(NORMALIZED_VERSION)")
+	$(call RUN,$(PY) -c "import json,sys,pathlib; p=pathlib.Path(sys.argv[1]); v=sys.argv[2]; d=json.loads(p.read_text(encoding='utf-8')); d['version']=v; p.write_text(json.dumps(d, separators=(',',':'))+'\\n', encoding='utf-8')" "$(FRONTEND_FILE)" "$(NORMALIZED_VERSION)"; \
+		$(PY) -c "import json,sys,pathlib; p=pathlib.Path(sys.argv[1]); expected=sys.argv[2]; d=json.loads(p.read_text(encoding='utf-8')); actual=d.get('version'); assert actual is not None, 'ERROR: package.json missing version field: {}'.format(p); assert actual==expected, 'ERROR: package.json version mismatch. expected={}, actual={}'.format(expected, actual); print('Verified frontend version:', actual)" "$(FRONTEND_FILE)" "$(NORMALIZED_VERSION)")
 
 update-versions: bump-version ## Update backend + frontend versions
 	@$(MAKE) update-backend-version
