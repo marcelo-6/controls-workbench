@@ -22,6 +22,10 @@ import IgnitionGraphPage from "../pages/IgnitionGraphPage";
 import BottomPanels from "./BottomPanels";
 import { OutputProvider } from "../state/output";
 
+import Brightness4Icon from "@mui/icons-material/Brightness4";
+import Brightness7Icon from "@mui/icons-material/Brightness7";
+import { useThemeMode } from "../theme-mode";
+
 const drawerWidth = 260;
 
 type Props = {
@@ -31,6 +35,7 @@ type Props = {
 export default function Shell({ onLogout }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const { mode, toggleMode } = useThemeMode();
 
   const navItems = useMemo(
     () => [
@@ -54,6 +59,11 @@ export default function Shell({ onLogout }: Props) {
             <Typography variant="h6" sx={{ flex: 1 }}>
               Controls Workbench
             </Typography>
+            <Tooltip title={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
+              <IconButton onClick={toggleMode} size="small" sx={{ ml: 1 }}>
+                {mode === "dark" ? <Brightness7Icon fontSize="small" /> : <Brightness4Icon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
             <Tooltip title="Logout">
               <IconButton color="inherit" onClick={onLogout}>
                 <LogoutIcon />

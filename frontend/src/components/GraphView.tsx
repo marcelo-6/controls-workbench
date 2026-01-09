@@ -26,6 +26,8 @@ import ReactFlow, {
   type Node
 } from "reactflow";
 
+import { useTheme } from "@mui/material/styles";
+
 import { layoutDagre } from "../utils/layout";
 
 type Props = {
@@ -68,6 +70,8 @@ function toRfEdges(graphEdges: any[]): Edge[] {
 
 export default function GraphView({ graph, report, summary }: Props) {
   const { enqueueSnackbar } = useSnackbar();
+  const theme = useTheme();
+  const isDark = theme.palette.mode === "dark";
 
   const allTypes = useMemo(() => {
     const s = new Set<string>();
@@ -186,8 +190,17 @@ export default function GraphView({ graph, report, summary }: Props) {
             fitView
             onNodeClick={(_: any, n: { data: { raw: any; }; }) => setSelected(n.data.raw)}
           >
-            <MiniMap />
-            <Controls position="top-left" showInteractive />
+            <MiniMap
+              maskColor={isDark ? "rgba(0,0,0,0.40)" : "rgba(0,0,0,0.08)"}
+              nodeColor={isDark ? "rgba(250,250,250,0.45)" : "rgba(11,11,12,0.35)"}
+              nodeStrokeColor={isDark ? "rgba(250,250,250,0.70)" : "rgba(11,11,12,0.55)"}
+            />
+            <Controls
+              position="top-left"          // "top-left" | "top-right" | "bottom-left" | "bottom-right"
+              showZoom={true}              // + / - buttons
+              showFitView={true}           // fit view button
+              showInteractive={true}       // lock/unlock interactivity button
+            />
             <Background />
           </ReactFlow>
         </Box>
