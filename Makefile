@@ -268,6 +268,9 @@ install-frontend: ## Install frontend deps (pnpm)
 up: ## docker compose up (dev overrides)
 	$(call RUN,up,docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build)
 
+up-backend: ## docker compose up (dev overrides, only backend)
+	$(call RUN,up,docker compose -f docker-compose.yml -f docker-compose.dev.yml up api worker)
+
 build-all-no-cache: ## docker compose build (dev overrides, no cache)
 	$(call RUN,build,docker compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache)
 
