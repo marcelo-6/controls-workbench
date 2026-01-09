@@ -69,12 +69,13 @@ export default function Shell({ onLogout }: Props) {
             flexShrink: 0,
             [`& .MuiDrawer-paper`]: {
               width: collapsed ? 72 : drawerWidth,
-              boxSizing: "border-box"
+              boxSizing: "border-box",
+              overflowX: "hidden"
             }
           }}
         >
           <Toolbar />
-          <Box sx={{ overflow: "auto" }}>
+          <Box sx={{ overflowY: "auto", overflowX: "hidden" }}>
             <List>
               {navItems.map((it) => (
                 <ListItemButton
@@ -82,8 +83,28 @@ export default function Shell({ onLogout }: Props) {
                   component={RouterLink}
                   to={it.to}
                   selected={location.pathname.startsWith(it.to)}
+                  sx={{
+                    justifyContent: collapsed ? "center" : "flex-start",
+                    px: collapsed ? 1 : 2
+                  }}
                 >
-                  <ListItemIcon>{it.icon}</ListItemIcon>
+                  <Tooltip
+                    title={collapsed ? it.label : ""}
+                    placement="right"
+                    disableHoverListener={!collapsed}
+                  >
+                    <ListItemIcon
+                      sx={{
+                        minWidth: 0,
+                        mr: collapsed ? 0 : 1.5,
+                        justifyContent: "center",
+                        color: "text.secondary"
+                      }}
+                    >
+                      {it.icon}
+                    </ListItemIcon>
+                  </Tooltip>
+
                   {!collapsed && <ListItemText primary={it.label} />}
                 </ListItemButton>
               ))}
@@ -91,6 +112,7 @@ export default function Shell({ onLogout }: Props) {
             <Divider />
           </Box>
         </Drawer>
+
 
         <Box component="main" sx={{ flex: 1, display: "flex", flexDirection: "column" }}>
           <Toolbar />
