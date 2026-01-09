@@ -88,6 +88,11 @@ define REQUIRE_CMD
 @command -v $(1) >/dev/null 2>&1 || { echo -e "$(RED)ERROR: Missing required tool: $(1)$(NC)"; exit 1; }
 endef
 
+define REQUIRE_OK
+	@$(1) >/dev/null 2>&1 || { echo -e "$(RED)ERROR: $(2)$(NC)"; exit 1; }
+endef
+
+
 # ----------------------------
 # Phony targets
 # ----------------------------
@@ -117,12 +122,23 @@ help: ## Show available commands
 # ----------------------------
 # Tool checks
 # ----------------------------
-check-tools: ## Check common dev tools (uv + pnpm + git)
+check-tools: ## Check common dev tools (must be runnable, not just present)
 	$(call REQUIRE_CMD,git)
 	$(call REQUIRE_CMD,$(PY))
 	$(call REQUIRE_CMD,$(UV))
+
+	$(call REQUIRE_OK,$(UV) --version,uv is installed but not runnable)
+
+	# Node must be runnable in WSL (pnpm depends on it)
+	$(call REQUIRE_CMD,node)
+	$(call REQUIRE_OK,node --version,node is installed but not runnable)
+
+	# pnpm must be runnable (not just found on PATH)
 	$(call REQUIRE_CMD,$(PNPM))
-	@printf "$(GREEN)OK: git, python, uv, pnpm$(NC)\n"
+	$(call REQUIRE_OK,$(PNPM) --version,pnpm is found but fails to run (often because node is missing in WSL))
+
+	@printf "$(GREEN)OK: git, python, uv, node, pnpm$(NC)\n"
+
 	@command -v docker >/dev/null 2>&1 && printf "$(GREEN)OK: docker$(NC)\n" || printf "$(YELLOW)WARN: docker not found (only needed for make up/build)$(NC)\n"
 	@command -v zip >/dev/null 2>&1 && printf "$(GREEN)OK: zip$(NC)\n" || printf "$(YELLOW)WARN: zip not found (only needed for make zip)$(NC)\n"
 
@@ -130,9 +146,20 @@ check-tools-release: ## Check tools required for release flow
 	$(call REQUIRE_CMD,git)
 	$(call REQUIRE_CMD,$(PY))
 	$(call REQUIRE_CMD,$(UV))
-	$(call REQUIRE_CMD,$(PNPM))
 	$(call REQUIRE_CMD,$(GIT_CLIFF))
-	@printf "$(GREEN)OK: release tooling present$(NC)\n"
+
+	$(call REQUIRE_OK,$(UV) --version,uv is installed but not runnable)
+	$(call REQUIRE_OK,$(GIT_CLIFF) --version,git-cliff is installed but not runnable)
+
+	# Release updates frontend version too, so ensure node+pnpm actually run
+	$(call REQUIRE_CMD,node)
+	$(call REQUIRE_OK,node --version,node is installed but not runnable)
+
+	$(call REQUIRE_CMD,$(PNPM))
+	$(call REQUIRE_OK,$(PNPM) --version,pnpm is found but fails to run (often because node is missing in WSL))
+
+	@printf "$(GREEN)OK: release tooling present (git, python, uv, git-cliff, node, pnpm)$(NC)\n"
+
 
 check-clean: ## Ensure git working tree is clean
 	@if [ -n "$$(git status --porcelain)" ]; then \
@@ -253,11 +280,11 @@ bump-version: check-tools-release ## Validate release version and ensure tag doe
 
 update-backend-version: ## Update backend/pyproject.toml version (uv if available; python fallback)
 	@printf "Updating backend version -> %s\n" "$(NORMALIZED_VERSION)"
-	# IMPORTANT: keep this as a single shell line to avoid "&& (" newline syntax issues.
 	$(call RUN,cd $(BACKEND_DIR) && { \
 		$(UV) version $(NORMALIZED_VERSION) >/dev/null 2>&1 || \
 		$(UV) version --set $(NORMALIZED_VERSION) >/dev/null 2>&1 || \
 		$(PY) -c "import re,sys,pathlib; p=pathlib.Path('pyproject.toml'); v=sys.argv[1]; t=p.read_text(encoding='utf-8'); new,n=re.subn(r'(?m)^(version\\s*=\\s*\\\")[^\\\"]*(\\\")', lambda m: m.group(1)+v+m.group(2), t, count=1); (n==1) or (_ for _ in ()).throw(SystemExit('ERROR: version = \"...\" not found in {}'.format(p))); p.write_text(new, encoding='utf-8')" "$(NORMALIZED_VERSION)"; \
+		$(PY) -c "import re,sys,pathlib; p=pathlib.Path('pyproject.toml'); expected=sys.argv[1]; t=p.read_text(encoding='utf-8'); m=re.search(r'(?m)^version\\s*=\\s*\\\"([^\\\"]+)\\\"\\s*$$', t); assert m, 'ERROR: Could not read version from {}'.format(p); actual=m.group(1); assert actual==expected, 'ERROR: pyproject.toml version mismatch. expected={}, actual={}'.format(expected, actual); print('Verified backend version:', actual)" "$(NORMALIZED_VERSION)"; \
 	})
 
 # update-backend-version: ## Update backend/pyproject.toml version (uv if available; python fallback)
