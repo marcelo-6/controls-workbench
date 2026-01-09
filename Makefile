@@ -280,10 +280,8 @@ build-frontend: ## docker compose build (dev overrides, no cache only for fronte
 up-prod: ## docker compose up (prod)
 	$(call RUN,up-prod,docker compose up --build)
 
-zip: ## Zip source tree (excluding common junk)
-	$(call RUN,zip,zip -r controls-workbench-src.zip . \
-		-x "*/.git/*" "*/.venv/*" "*/node_modules/*" "*/data/*" "*/dist/*" "*/build/*" "*/__pycache__/*")
-
+zip: ## Zip source tree (excluding common junk zip only what Git tracks)
+	$(call RUN,zip, git ls-files -z | xargs -0 zip controls-workbench-src.zip)
 
 # ----------------------------
 # Changelog
