@@ -170,7 +170,8 @@ endef
 	bump-version update-backend-version update-frontend-version update-versions \
 	commit-release tag-release push-release \
 	prepare-release release \
-	up build build-all-no-cache build-frontend up-prod zip
+	up build build-all-no-cache build-frontend up-prod zip \
+	lint format test precommit
 
 # ----------------------------
 # Help
@@ -285,6 +286,22 @@ up-prod: ## docker compose up (prod)
 
 zip: ## Zip source tree (excluding common junk zip only what Git tracks)
 	$(call RUN,zip, git ls-files -z | xargs -0 zip controls-workbench-src.zip)
+
+# ----------------------------
+# Formating and linting
+# ----------------------------
+
+lint:
+	cd backend && uv run ruff check .
+
+format:
+	cd backend && uv run ruff format .
+
+test:
+	cd backend && uv run pytest
+
+precommit:
+	cd backend && uv run pre-commit run --all-files
 
 # ----------------------------
 # Changelog
