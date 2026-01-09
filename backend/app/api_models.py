@@ -154,3 +154,24 @@ class RunSummary(APIModel):
 
 class RecentRuns(APIModel):
     runs: list[RunSummary] = Field(default_factory=list)
+
+
+# --------------------- Ignition Explorer ---------------------
+
+
+class IgnitionTreePayload(APIModel):
+    tree: dict
+
+
+class IgnitionSubgraphPayload(APIModel):
+    graph: dict
+
+
+class IgnitionNodeDetailsPayload(APIModel):
+    node: dict
+    inbound: list[dict] = Field(default_factory=list)
+    outbound: list[dict] = Field(default_factory=list)
+
+
+class IgnitionSearchResultsPayload(APIModel):
+    matches: list[dict] = Field(default_factory=list)

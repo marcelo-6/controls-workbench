@@ -14,6 +14,7 @@ from .api_response import fail
 # Routers
 from .auth import router as auth_router
 from .config import settings
+from .index_db import get_index_db
 from .jobs_endpoints import router as jobs_router
 from .jobs_endpoints import runs_router
 from .logging_conf import setup_logger
@@ -47,7 +48,7 @@ async def http_exc_handler(request: Request, exc: HTTPException):
     return JSONResponse(
         status_code=exc.status_code,
         content=fail(code="HTTP_ERROR", detail=str(exc.detail), request_id=rid).model_dump(
-            by_alias=True
+            mode="json", by_alias=True
         ),
     )
 
@@ -60,9 +61,12 @@ async def validation_exc_handler(request: Request, exc: RequestValidationError):
         loc = ".".join(str(x) for x in err.get("loc", []) if x != "body")
         fields.append(ErrorField(field=loc or "body", message=err.get("msg", "Invalid value")))
     resp = fail(
-        code="VALIDATION_ERROR", detail="Request validation failed", request_id=rid, fields=fields
+        code="VALIDATION_ERROR",
+        detail="Request validation failed",
+        request_id=rid,
+        fields=fields,
     )
-    return JSONResponse(status_code=422, content=resp.model_dump(by_alias=True))
+    return JSONResponse(status_code=422, content=resp.model_dump(mode="json", by_alias=True))
 
 
 @app.exception_handler(Exception)
@@ -98,4 +102,9 @@ async def _retention_loop():
 @app.on_event("startup")
 async def _startup():
     api_logger.info("API startup")
+    # Initialize the SQLite catalog early (creates schema if missing).
+    try:
+        get_index_db()
+    except Exception as e:
+        api_logger.exception("Index DB init failed: %s", e)
     asyncio.create_task(_retention_loop())

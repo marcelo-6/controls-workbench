@@ -24,5 +24,5 @@ def ensure_dirs() -> None:
         base = Path(settings.data_dir)
         base.mkdir(parents=True, exist_ok=True)
 
-    for p in ["uploads", "runs", "logs", "queue"]:
+    for p in ["uploads", "runs", "logs", "queue", "index"]:
         Path(data_path(p)).mkdir(parents=True, exist_ok=True)

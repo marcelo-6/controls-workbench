@@ -36,6 +36,11 @@ class Settings(BaseModel):
         default_factory=lambda: os.getenv("HUEY_FSYNC", "false").lower() == "true"
     )
 
+    # Index DB (run history + parsed graph index)
+    index_db: str = Field(
+        default_factory=lambda: os.getenv("INDEX_DB", "./data/index/workbench.db")
+    )
+
 
 settings = Settings()
 
@@ -55,6 +60,7 @@ def _ensure_writable_data_dir() -> None:
     except Exception:
         settings.data_dir = "./data"
         settings.huey_db = "./data/queue/queue.db"
+        settings.index_db = "./data/index/workbench.db"
         Path(settings.data_dir).mkdir(parents=True, exist_ok=True)
 
 

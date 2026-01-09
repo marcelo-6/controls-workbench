@@ -8,7 +8,9 @@ from pathlib import Path
 from .api_models import JobStatus, ToolCategory
 from .config import settings
 from .ignition.engine import build_graph
+from .ignition.indexing import build_index
 from .ignition.parser import safe_extract_zip
+from .index_db import get_index_db
 from .logging_conf import setup_logger
 from .queue import huey
 from .run_models import InputFile, RunMeta, RunState, Stats, Versions, utcnow
@@ -63,11 +65,27 @@ def run_ignition_graph(job_id: str, upload_id: str, params: dict) -> None:
     if tag_copy:
         meta.input_files.append(
             InputFile(
-                name=tag_copy.name, size_bytes=tag_copy.stat().st_size, sha256=file_sha256(tag_copy)
+                name=tag_copy.name,
+                size_bytes=tag_copy.stat().st_size,
+                sha256=file_sha256(tag_copy),
             )
         )
 
     write_meta(meta)
+
+    # Create/refresh DB run row early so it appears in run history immediately.
+    try:
+        get_index_db().upsert_run(
+            job_id=job_id,
+            tool_id=meta.tool_id,
+            status="running",
+            created_at=meta.created_at,
+            last_accessed_at=meta.last_accessed_at,
+            meta=meta.model_dump(mode="json", by_alias=True),
+        )
+    except Exception as e:
+        worker_logger.error("shit the bed=%s", str(e))
+        # DB is best-effort; artifacts on disk are the source of truth.
 
     # Extract zip
     append_event(job_id, "Starting: extracting zip")
@@ -83,6 +101,19 @@ def run_ignition_graph(job_id: str, upload_id: str, params: dict) -> None:
     worker_logger.info("job=%s building graph", job_id)
 
     graph, report, summary_md = build_graph(extract_dir, job_id)
+
+    # Build and persist SQLite index so the UI can load trees/subgraphs without
+    # re-reading large artifacts.
+    try:
+        elements, edges, tree = build_index(
+            run_root=rd,
+            extracted_root=extract_dir,
+            graph=graph,
+        )
+        get_index_db().replace_graph(job_id=job_id, elements=elements, edges=edges, tree=tree)
+    except Exception as e:
+        # Indexing should never fail the job; it only affects UX speed.
+        worker_logger.error("job=%s indexing failed: %s", job_id, e)
 
     # Write artifacts
     (rd / "graph").mkdir(parents=True, exist_ok=True)
@@ -101,6 +132,22 @@ def run_ignition_graph(job_id: str, upload_id: str, params: dict) -> None:
     meta.stats.counts_by_type = graph.meta.stats.get("counts_by_type", {})
     write_meta(meta)
 
+    # Update DB run stats.
+    try:
+        get_index_db().upsert_run(
+            job_id=job_id,
+            tool_id=meta.tool_id,
+            status="success",
+            created_at=meta.created_at,
+            last_accessed_at=meta.last_accessed_at,
+            parse_seconds=meta.stats.parse_seconds,
+            nodes=meta.stats.nodes,
+            edges=meta.stats.edges,
+            meta=meta.model_dump(mode="json", by_alias=True),
+        )
+    except Exception as e:
+        worker_logger.error("shit the bed=%s", str(e))
+
     append_event(job_id, "Done: artifacts written")
     worker_logger.info("job=%s done", job_id)
 
@@ -110,6 +157,16 @@ def run_tool_job(job_id: str, tool_id: str, upload_id: str, params: dict) -> Non
     t0 = time.time()
     state = RunState(job_id=job_id, tool_id=tool_id, status=JobStatus.running, started_at=utcnow())
     write_state(state)
+
+    try:
+        get_index_db().upsert_run(
+            job_id=job_id,
+            tool_id=tool_id,
+            status=state.status.value,
+            created_at=state.created_at,
+        )
+    except Exception as e:
+        worker_logger.error("shit the bed=%s", str(e))
 
     try:
         append_event(job_id, f"Job running: {tool_id}")
@@ -124,6 +181,11 @@ def run_tool_job(job_id: str, tool_id: str, upload_id: str, params: dict) -> Non
         write_state(state)
         append_event(job_id, "Job success")
 
+        try:
+            get_index_db().upsert_run(job_id=job_id, tool_id=tool_id, status=state.status.value)
+        except Exception as e:
+            worker_logger.error("shit the bed=%s", str(e))
+
     except Exception as e:
         worker_logger.exception("job=%s failed: %s", job_id, e)
         state.status = JobStatus.failed
@@ -131,6 +193,11 @@ def run_tool_job(job_id: str, tool_id: str, upload_id: str, params: dict) -> Non
         state.progress_hint = str(e)
         write_state(state)
         append_event(job_id, f"Job failed: {e}")
+
+        try:
+            get_index_db().upsert_run(job_id=job_id, tool_id=tool_id, status=state.status.value)
+        except Exception as e:
+            worker_logger.error("shit the bed=%s", str(e))
         raise
 
 

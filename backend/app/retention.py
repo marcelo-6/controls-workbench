@@ -69,6 +69,12 @@ def cleanup_runs() -> dict:
             if total_bytes <= settings.max_runs_bytes and total_count <= settings.max_runs_count:
                 break
             shutil.rmtree(d, ignore_errors=True)
+            try:
+                from .index_db import get_index_db
+
+                get_index_db().delete_run(_job_id)
+            except Exception:
+                pass
             deleted += 1
             deleted_bytes += size
             total_bytes -= size
@@ -77,8 +83,14 @@ def cleanup_runs() -> dict:
     # TTL trim
     cutoff = datetime.now(UTC) - timedelta(days=settings.max_age_days)
     for _job_id, d, _created, _accessed, size in runs:
-        if created < cutoff and d.exists():
+        if _created < cutoff and d.exists():
             shutil.rmtree(d, ignore_errors=True)
+            try:
+                from .index_db import get_index_db
+
+                get_index_db().delete_run(_job_id)
+            except Exception:
+                pass
             deleted += 1
             deleted_bytes += size
 

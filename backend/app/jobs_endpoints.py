@@ -19,6 +19,7 @@ from .api_models import (
 )
 from .api_response import ok
 from .auth import require_auth
+from .index_db import get_index_db
 from .run_models import RunMeta, RunState, utcnow
 from .run_storage import (
     append_event,
@@ -69,6 +70,19 @@ def create_job(request: Request, body: CreateJobRequest, user: str = Depends(req
     write_state(state)
 
     append_event(job_id, "Job queued")
+
+    # Persist a run row so /api/runs/recent does not need to scan the filesystem.
+    try:
+        get_index_db().upsert_run(
+            job_id=job_id,
+            tool_id=body.tool_id,
+            status=state.status.value,
+            created_at=meta.created_at,
+            last_accessed_at=meta.last_accessed_at,
+            meta=meta.model_dump(mode="json", by_alias=True),
+        )
+    except Exception:
+        pass
 
     # Enqueue
     run_tool_job(job_id, body.tool_id, body.upload_id, body.params)
@@ -157,24 +171,49 @@ def recent_runs(
     limit: int = Query(default=20, ge=1, le=200),
     user: str = Depends(require_auth),
 ):
-    runs_root = data_path("runs")
-    items = []
-    if runs_root.exists():
-        for d in runs_root.iterdir():
-            if not d.is_dir():
+    # Preferred: SQLite index (fast, no disk walking)
+    try:
+        rows = get_index_db().list_recent_runs(limit)
+        items = []
+        for r in rows:
+            if not r.created_at or not r.last_accessed_at:
                 continue
-            job_id = d.name
-            meta = read_meta(job_id)
-            st = read_state(job_id)
-            if meta and st:
-                items.append(
-                    RunSummary(
-                        job_id=job_id,
-                        tool_id=meta.tool_id,
-                        status=st.status,
-                        created_at=meta.created_at,
-                        last_accessed_at=meta.last_accessed_at,
-                    )
+            items.append(
+                RunSummary(
+                    job_id=r.job_id,
+                    tool_id=r.tool_id,
+                    status=JobStatus(r.status),
+                    created_at=r.created_at,
+                    last_accessed_at=r.last_accessed_at,
                 )
-    items.sort(key=lambda x: x.created_at, reverse=True)
-    return ok(RecentRuns(runs=items[:limit]), request_id=getattr(request.state, "request_id", None))
+            )
+        return ok(
+            RecentRuns(runs=items),
+            request_id=getattr(request.state, "request_id", None),
+        )
+    except Exception:
+        # Fallback: filesystem scan (v0.1 behavior)
+        runs_root = data_path("runs")
+        items = []
+        if runs_root.exists():
+            for d in runs_root.iterdir():
+                if not d.is_dir():
+                    continue
+                job_id = d.name
+                meta = read_meta(job_id)
+                st = read_state(job_id)
+                if meta and st:
+                    items.append(
+                        RunSummary(
+                            job_id=job_id,
+                            tool_id=meta.tool_id,
+                            status=st.status,
+                            created_at=meta.created_at,
+                            last_accessed_at=meta.last_accessed_at,
+                        )
+                    )
+        items.sort(key=lambda x: x.created_at, reverse=True)
+        return ok(
+            RecentRuns(runs=items[:limit]),
+            request_id=getattr(request.state, "request_id", None),
+        )

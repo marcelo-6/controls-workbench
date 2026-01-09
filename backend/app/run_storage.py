@@ -42,6 +42,14 @@ def touch_meta_access(job_id: str) -> None:
     meta.last_accessed_at = utcnow()
     write_meta(meta)
 
+    # Keep SQLite catalog in sync (best effort).
+    try:
+        from .index_db import get_index_db
+
+        get_index_db().touch_run_access(job_id, meta.last_accessed_at)
+    except Exception:
+        pass
+
 
 def write_state(state: RunState) -> None:
     p = state_path(state.job_id)
