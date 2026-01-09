@@ -336,7 +336,7 @@ update-versions: bump-version ## Update backend + frontend versions
 commit-release: ## Create release commit (Release version X.Y.Z)
 	$(call LOG,commit-release,Creating release commit...)
 	if [ "$(DRY_RUN)" = "1" ]; then \
-		$(call WARN,commit-release,DRY_RUN: would run git add -A && git commit -m "Release version $(NORMALIZED_VERSION)"); \
+		$(call WARN,commit-release,DRY_RUN: would run git add -A && git commit -m "chore: Release v$(NORMALIZED_VERSION)"); \
 		$(call OK,commit-release,DRY_RUN: commit step simulated); \
 		exit 0; \
 	fi
