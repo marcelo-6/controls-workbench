@@ -23,6 +23,12 @@ import {
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import ErrorIcon from "@mui/icons-material/Error";
+import HourglassTopIcon from "@mui/icons-material/HourglassTop";
+import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
+
 import { useSnackbar } from "notistack";
 
 import { api } from "../api/client";
@@ -80,6 +86,9 @@ export default function IgnitionGraphPage() {
     graphFallbackLoadedRef.current = false;
     eventsFinalLoadedRef.current = false;
   }, [selectedJobId]);
+
+  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 
   const refreshRecent = async () => {
     try {
@@ -230,10 +239,49 @@ export default function IgnitionGraphPage() {
 
   const statusChip = (status?: JobStatus) => {
     if (!status) return null;
-    const color =
-      status === "success" ? "success" : status === "failed" ? "error" : status === "running" ? "warning" : "default";
-    return <Chip size="small" label={status} color={color as any} />;
+
+    const map = {
+      success: {
+        color: "success",
+        icon: <CheckCircleIcon />,
+      },
+      failed: {
+        color: "error",
+        icon: <ErrorIcon />,
+      },
+      running: {
+        color: "warning",
+        icon: <HourglassTopIcon />,
+      },
+      queued: {
+        color: "info",
+        icon: <HourglassEmptyIcon />,
+      },
+    } as const;
+
+    const cfg = map[status] ?? {
+      color: "default",
+      icon: <HelpOutlineIcon />,
+    };
+
+    return (
+      <Chip
+        size="small"
+        label={capitalize(status)}
+        color={cfg.color as any}
+        icon={cfg.icon}
+        sx={{
+          fontWeight: 500,
+          textTransform: "none",
+          "& .MuiChip-icon": {
+            fontSize: 18,
+          },
+        }}
+      />
+    );
   };
+
+
 
   const loadSubgraph = async (rootId: string) => {
     if (!selectedJobId) return;
