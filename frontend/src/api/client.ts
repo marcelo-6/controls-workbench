@@ -115,6 +115,38 @@ export class ApiClient {
     return await this.request<any>(`/api/tools/ignition/summary/${jobId}`);
   }
 
+  // ---------------- Ignition (indexed) ----------------
+
+  async getTree(jobId: string) {
+    return await this.request<any>(`/api/tools/ignition/tree/${jobId}`);
+  }
+
+  async searchIndex(jobId: string, q: string) {
+    const qs = new URLSearchParams({ q });
+    return await this.request<any>(`/api/tools/ignition/search/${jobId}?${qs.toString()}`);
+  }
+
+  async getNodeDetails(jobId: string, nodeId: string) {
+    return await this.request<any>(`/api/tools/ignition/node/${jobId}/${encodeURIComponent(nodeId)}`);
+  }
+
+  async getSubgraph(
+    jobId: string,
+    opts: {
+      rootIds: string[];
+      depth?: number;
+      direction?: "in" | "out" | "both";
+      maxNodes?: number;
+    }
+  ) {
+    const qs = new URLSearchParams();
+    for (const id of opts.rootIds) qs.append("root_ids", id);
+    if (opts.depth !== undefined) qs.set("depth", String(opts.depth));
+    if (opts.direction) qs.set("direction", opts.direction);
+    if (opts.maxNodes !== undefined) qs.set("max_nodes", String(opts.maxNodes));
+    return await this.request<any>(`/api/tools/ignition/subgraph/${jobId}?${qs.toString()}`);
+  }
+
   async logLatest(name: "api" | "worker" = "api") {
     return await this.request<any>(`/api/logs/latest?name=${name}`);
   }

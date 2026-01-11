@@ -48,25 +48,25 @@ export default function BottomPanels() {
   const [logTail, setLogTail] = useState<string[]>([]);
   const { enqueueSnackbar } = useSnackbar();
 
-  useEffect(() => {
-    let cancelled = false;
-    const tick = async () => {
-      try {
-        const res = await api.logLatest(logName);
-        if (!cancelled) setLatestLog(res.lines?.[0] ?? "—");
-      } catch {
-        if (!cancelled) setLatestLog("—");
-      }
-    };
-    tick();
-    const id = setInterval(tick, 2500);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [logName]);
+  // useEffect(() => {
+  //   let cancelled = false;
+  //   const tick = async () => {
+  //     try {
+  //       const res = await api.logLatest(logName);
+  //       if (!cancelled) setLatestLog(res.lines?.[0] ?? "—");
+  //     } catch {
+  //       if (!cancelled) setLatestLog("—");
+  //     }
+  //   };
+  //   tick();
+  //   const id = setInterval(tick, 2500);
+  //   return () => {
+  //     cancelled = true;
+  //     clearInterval(id);
+  //   };
+  // }, [logName]);
 
-  const height = expanded ? 360 : 180;
+  const height = expanded ? 360 : 100;
 
   const refreshLogTail = async () => {
     try {
@@ -100,6 +100,7 @@ export default function BottomPanels() {
         sx={{
           height,
           display: "grid",
+          zIndex: (theme) => theme.zIndex.modal + 1, // ensures it's above dialogs, drawers, etc.
           gridTemplateColumns: "1fr 1px 1fr",
           borderTop: 1,
           borderColor: "divider"

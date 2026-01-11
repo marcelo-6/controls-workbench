@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Box,
   Button,
   Card,
   CardContent,
+  CircularProgress,
   Divider,
   Grid,
   LinearProgress,
@@ -14,7 +15,10 @@ import {
   List,
   ListItemButton,
   ListItemText,
-  Chip
+  Chip,
+  ToggleButton,
+  ToggleButtonGroup,
+  MenuItem
 } from "@mui/material";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
@@ -23,6 +27,7 @@ import { useSnackbar } from "notistack";
 
 import { api } from "../api/client";
 import GraphView from "../components/GraphView";
+import ProjectExplorerTree from "../components/ProjectExplorerTree";
 import { useOutput } from "../state/output";
 
 type JobStatus = "queued" | "running" | "success" | "failed";
@@ -44,6 +49,38 @@ export default function IgnitionGraphPage() {
   const [report, setReport] = useState<any | null>(null);
   const [summary, setSummary] = useState<string>("");
 
+  const [tree, setTree] = useState<any | null>(null);
+  const [treeLoading, setTreeLoading] = useState(false);
+  const [treeError, setTreeError] = useState<string>("");
+
+  const [selectedRootId, setSelectedRootId] = useState<string | null>(null);
+  const [depth, setDepth] = useState<number>(2);
+  const [direction, setDirection] = useState<"both" | "in" | "out">("both");
+  const [subgraphLoading, setSubgraphLoading] = useState(false);
+
+  // Avoid restarting polling effects when state updates (which can cancel in-flight loads).
+  // We use refs to track whether we've already loaded optional artifacts.
+  const treeLoadInFlightRef = useRef(false);
+  const treeLoadedRef = useRef(false);
+  const treeNotFoundRef = useRef(false);
+  const reportLoadedRef = useRef(false);
+  const summaryLoadedRef = useRef(false);
+  const graphFallbackLoadedRef = useRef(false);
+  const pollTimerRef = useRef<number | null>(null);
+  const pollInFlightRef = useRef(false);
+  const eventsFinalLoadedRef = useRef(false);
+
+  // Reset per-run load flags when switching jobs.
+  useEffect(() => {
+    treeLoadInFlightRef.current = false;
+    treeLoadedRef.current = false;
+    treeNotFoundRef.current = false;
+    reportLoadedRef.current = false;
+    summaryLoadedRef.current = false;
+    graphFallbackLoadedRef.current = false;
+    eventsFinalLoadedRef.current = false;
+  }, [selectedJobId]);
+
   const refreshRecent = async () => {
     try {
       const res = await api.recentRuns(30);
@@ -57,12 +94,19 @@ export default function IgnitionGraphPage() {
     refreshRecent();
   }, []);
 
-  // Poll active job
+  // Poll active job (only restart when switching runs)
   useEffect(() => {
     if (!selectedJobId) return;
 
     let cancelled = false;
     setCurrentJobId(selectedJobId);
+
+    const stopPolling = () => {
+      if (pollTimerRef.current !== null) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
 
     const tick = async () => {
       try {
@@ -70,36 +114,97 @@ export default function IgnitionGraphPage() {
         if (cancelled) return;
         setJob(st);
 
-        const ev = await api.getEvents(selectedJobId, 2000);
-        if (!cancelled) setLines(ev.lines || []);
+        const terminal = st.status === "success" || st.status === "failed";
+        const done = !!st.artifactsReady && terminal;
 
-        if (st.artifactsReady && (st.status === "success" || st.status === "failed")) {
-          // Fetch artifacts (graph/report/summary) if not loaded
-          if (!graph && st.status === "success") {
-            const g = await api.getGraph(selectedJobId);
-            if (!cancelled) setGraph(g.graph);
-          }
-          if (!report) {
-            const r = await api.getReport(selectedJobId);
-            if (!cancelled) setReport(r.report);
-          }
-          if (!summary) {
-            const s = await api.getSummary(selectedJobId);
-            if (!cancelled) setSummary(s.markdown || "");
+        // Poll events while running; once more after terminal to catch last lines
+        if (!terminal || !eventsFinalLoadedRef.current) {
+          const ev = await api.getEvents(selectedJobId, 2000);
+          if (!cancelled) setLines(ev.lines || []);
+          if (terminal) eventsFinalLoadedRef.current = true;
+        }
+        if (!done) return;
+
+        // Indexed tree (preferred)
+        if (
+          st.status === "success" &&
+          !treeLoadedRef.current &&
+          !treeLoadInFlightRef.current
+        ) {
+          treeLoadInFlightRef.current = true;
+          setTreeLoading(true);
+          try {
+            const t = await api.getTree(selectedJobId);
+            if (!cancelled) setTree(t.tree);
+            treeLoadedRef.current = true;
+          } catch (e: any) {
+            const msg = e.message || "Failed to load tree";
+            if (!cancelled) setTreeError(msg);
+            if (String(msg).toLowerCase().includes("tree not found")) {
+              treeNotFoundRef.current = true;
+            }
+          } finally {
+            treeLoadInFlightRef.current = false;
+            if (!cancelled) setTreeLoading(false);
           }
         }
-      } catch (e: any) {
+
+        // Back-compat fallback: older runs won't have a tree index
+        if (
+          st.status === "success" &&
+          treeNotFoundRef.current &&
+          !graphFallbackLoadedRef.current
+        ) {
+          graphFallbackLoadedRef.current = true;
+          try {
+            const g = await api.getGraph(selectedJobId);
+            if (!cancelled) setGraph(g.graph);
+          } catch {
+            // ignore
+          }
+        }
+
+        // Report/summary are still useful even with indexed graph slicing
+        if (!reportLoadedRef.current) {
+          reportLoadedRef.current = true;
+          try {
+            const r = await api.getReport(selectedJobId);
+            if (!cancelled) setReport(r.report);
+          } catch {
+            // ignore
+          }
+        }
+
+        if (!summaryLoadedRef.current) {
+          summaryLoadedRef.current = true;
+          try {
+            const s = await api.getSummary(selectedJobId);
+            if (!cancelled) setSummary(s.markdown || "");
+          } catch {
+            // ignore
+          }
+        }
+
+        // Stop polling after we’ve reached a stable done state
+        const treeAttempted = treeLoadedRef.current || treeNotFoundRef.current;
+        const fallbackOk = !treeNotFoundRef.current || graphFallbackLoadedRef.current;
+
+        if (treeAttempted && fallbackOk) {
+          stopPolling();
+        }
+
+      } catch {
         // ignore transient
       }
     };
 
     tick();
-    const id = setInterval(tick, 1500);
+    pollTimerRef.current = window.setInterval(tick, 1500);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stopPolling();
     };
-  }, [selectedJobId, graph, report, summary, setCurrentJobId, setLines]);
+  }, [selectedJobId, setCurrentJobId, setLines]);
 
   const submit = async () => {
     if (!projectZip) return;
@@ -112,6 +217,9 @@ export default function IgnitionGraphPage() {
       setGraph(null);
       setReport(null);
       setSummary("");
+      setTree(null);
+      setTreeError("");
+      setSelectedRootId(null);
       await refreshRecent();
     } catch (e: any) {
       enqueueSnackbar(e.message || "Failed to start job", { variant: "error" });
@@ -125,6 +233,26 @@ export default function IgnitionGraphPage() {
     const color =
       status === "success" ? "success" : status === "failed" ? "error" : status === "running" ? "warning" : "default";
     return <Chip size="small" label={status} color={color as any} />;
+  };
+
+  const loadSubgraph = async (rootId: string) => {
+    if (!selectedJobId) return;
+    setSelectedRootId(rootId);
+    setSubgraphLoading(true);
+    try {
+      const res = await api.getSubgraph(selectedJobId, {
+        rootIds: [rootId],
+        depth,
+        direction,
+        maxNodes: 1200
+      });
+      setGraph(res.graph);
+      enqueueSnackbar(`Loaded ${res.graph?.meta?.stats?.nodes || ""} nodes`, { variant: "success" });
+    } catch (e: any) {
+      enqueueSnackbar(e.message || "Failed to load subgraph", { variant: "error" });
+    } finally {
+      setSubgraphLoading(false);
+    }
   };
 
   return (
@@ -174,7 +302,7 @@ export default function IgnitionGraphPage() {
             </Card>
 
             <Paper sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-              <Box sx={{ display: "flex", alignItems: "center", px: 1.5, py: 1, gap: 1 }}>
+              <Box sx={{ display: "flex", alignItems: "center", px: 1.5, py: 1, gap: 1}}>
                 <Typography variant="subtitle2" sx={{ flex: 1 }}>
                   Recent runs
                 </Typography>
@@ -184,7 +312,7 @@ export default function IgnitionGraphPage() {
               </Box>
               <Divider />
               <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-                <List dense disablePadding>
+                <List dense disablePadding sx={{ minHeight: 0, maxHeight: 200 }}>
                   {recent.map((r) => (
                     <ListItemButton
                       key={r.jobId}
@@ -194,6 +322,9 @@ export default function IgnitionGraphPage() {
                         setGraph(null);
                         setReport(null);
                         setSummary("");
+                        setTree(null);
+                        setTreeError("");
+                        setSelectedRootId(null);
                       }}
                     >
                       <ListItemText
@@ -232,13 +363,88 @@ export default function IgnitionGraphPage() {
             </Box>
             {job && (job.status === "queued" || job.status === "running") && <LinearProgress />}
             <Divider />
-            <Box sx={{ flex: 1, minHeight: 0 }}>
-              {graph ? (
-                <GraphView graph={graph} report={report} summary={summary} />
+            <Box sx={{ flex: 1, minHeight: 0, display: "flex" }}>
+              {!selectedJobId ? (
+                <Box sx={{ p: 2 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Select a run or start a new job.
+                  </Typography>
+                </Box>
+              ) : job && job.status === "success" && tree ? (
+                <Box sx={{ flex: 1, minHeight: 0, display: "flex" }}>
+                  {/* Explorer panel */}
+                  <Box
+                    sx={{
+                      width: 360,
+                      borderRight: "1px solid",
+                      borderColor: "divider",
+                      display: "flex",
+                      flexDirection: "column",
+                      minHeight: 0
+                    }}
+                  >
+                    <Box sx={{ p: 1, display: "flex", flexDirection: "column", gap: 1 }}>
+                      <Typography variant="subtitle2">Graph slice</Typography>
+                      <TextField
+                        select
+                        size="small"
+                        label="Depth"
+                        value={depth}
+                        onChange={(e) => setDepth(Number(e.target.value))}
+                      >
+                        {[0, 1, 2, 3, 4, 5].map((n) => (
+                          <MenuItem key={n} value={n}>
+                            {n}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                      <ToggleButtonGroup
+                        size="small"
+                        value={direction}
+                        exclusive
+                        onChange={(_e, v) => v && setDirection(v)}
+                      >
+                        <ToggleButton value="both">Both</ToggleButton>
+                        <ToggleButton value="in">In</ToggleButton>
+                        <ToggleButton value="out">Out</ToggleButton>
+                      </ToggleButtonGroup>
+                    </Box>
+                    <Divider />
+                    <Box sx={{ flex: 1, minHeight: 0 }}>
+                      <ProjectExplorerTree key={selectedJobId || "tree"} tree={tree} selectedId={selectedRootId} onSelect={loadSubgraph} />
+                    </Box>
+                  </Box>
+
+                  {/* Graph panel */}
+                  <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
+                    {subgraphLoading && <LinearProgress />}
+                    {graph ? (
+                      <GraphView jobId={selectedJobId} graph={graph} report={report} summary={summary} />
+                    ) : (
+                      <Box sx={{ p: 2 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Pick an element from the project explorer to generate a graph slice.
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+                </Box>
+              ) : job && job.status === "success" && treeLoading ? (
+                <Box sx={{ p: 2, display: "flex", alignItems: "center", gap: 2 }}>
+                  <CircularProgress size={20} />
+                  <Typography variant="body2" color="text.secondary">
+                    Loading project explorer...
+                  </Typography>
+                </Box>
+              ) : graph ? (
+                // Back-compat: older runs show full graph.json
+                <GraphView jobId={selectedJobId} graph={graph} report={report} summary={summary} />
               ) : (
                 <Box sx={{ p: 2 }}>
                   <Typography variant="body2" color="text.secondary">
-                    {selectedJobId ? "Waiting for graph artifacts..." : "Select a run or start a new job."}
+                    {job && job.status === "success" && treeError
+                      ? `Explorer not available: ${treeError}`
+                      : "Waiting for artifacts..."}
                   </Typography>
                 </Box>
               )}

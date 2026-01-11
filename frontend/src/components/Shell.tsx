@@ -17,6 +17,7 @@ import {
 import MenuIcon from "@mui/icons-material/Menu";
 import LogoutIcon from "@mui/icons-material/Logout";
 import HubIcon from "@mui/icons-material/Hub";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 
 import IgnitionGraphPage from "../pages/IgnitionGraphPage";
 import BottomPanels from "./BottomPanels";
@@ -62,6 +63,14 @@ export default function Shell({ onLogout }: Props) {
             <Tooltip title={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
               <IconButton onClick={toggleMode} size="small" sx={{ ml: 1 }}>
                 {mode === "dark" ? <Brightness7Icon fontSize="small" /> : <Brightness4Icon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Open API Docs">
+              <IconButton
+                color="inherit"
+                onClick={() => window.open("http://localhost:8000/docs", "_blank")}
+              >
+                <HelpOutlineIcon />
               </IconButton>
             </Tooltip>
             <Tooltip title="Logout">

@@ -1,8 +1,10 @@
 import dagre from "@dagrejs/dagre";
 import type { Edge, Node } from "reactflow";
 
-const NODE_WIDTH = 220;
-const NODE_HEIGHT = 56;
+// These are approximate sizes for our custom nodes.
+// Dagre uses them to calculate spacing.
+const NODE_WIDTH = 280;
+const NODE_HEIGHT = 120;
 
 export function layoutDagre(nodes: Node[], edges: Edge[], direction: "LR" | "TB" = "LR"): { nodes: Node[]; edges: Edge[] } {
   const g = new dagre.graphlib.Graph();

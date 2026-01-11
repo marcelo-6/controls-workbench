@@ -28,33 +28,48 @@ import ReactFlow, {
 
 import { useTheme } from "@mui/material/styles";
 
+import { api } from "../api/client";
 import { layoutDagre } from "../utils/layout";
+import ResourceNode from "./ResourceNode";
 
 type Props = {
+  jobId?: string | null;
   graph: any;
   report: any | null;
   summary: string;
 };
 
-function toRfNodes(graphNodes: any[]): Node[] {
-  return graphNodes.map((n) => ({
-    id: n.id,
-    position: n.position || { x: 0, y: 0 },
-    data: {
-      label: n.label,
-      subtitle: n.type,
-      path: n.path,
-      raw: n
-    },
-    style: {
-      borderRadius: 12,
-      border: "1px solid rgba(255,255,255,0.12)",
-      background: "rgba(17,17,19,0.85)",
-      boxShadow: "0 10px 30px rgba(0,0,0,0.45)",
-      padding: 10,
-      width: 220
-    }
-  }));
+function artifactUrl(jobId: string, relPath: string) {
+  return `/api/jobs/${jobId}/artifact?path=${encodeURIComponent(relPath)}`;
+}
+
+function nodeKind(n: any): string {
+  return (n?.data?.kind || n?.type || "resource") as string;
+}
+
+function toRfNodes(graphNodes: any[], jobId?: string | null): Node[] {
+  return graphNodes.map((n) => {
+    const kind = nodeKind(n);
+    const thumbPath = n?.data?.thumbnail_path;
+    const thumbnailUrl = jobId && thumbPath ? artifactUrl(jobId, thumbPath) : null;
+
+    return {
+      id: n.id,
+      type: "resource",
+      position: n.position || { x: 0, y: 0 },
+      data: {
+        label: n.label,
+        kind,
+        path: n.path,
+        metrics: n?.data?.metrics,
+        thumbnailUrl,
+        raw: n
+      },
+      style: {
+        width: 280
+      }
+    };
+  });
 }
 
 function toRfEdges(graphEdges: any[]): Edge[] {
@@ -68,14 +83,14 @@ function toRfEdges(graphEdges: any[]): Edge[] {
   }));
 }
 
-export default function GraphView({ graph, report, summary }: Props) {
+export default function GraphView({ jobId, graph, report, summary }: Props) {
   const { enqueueSnackbar } = useSnackbar();
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
 
   const allTypes = useMemo(() => {
     const s = new Set<string>();
-    (graph.nodes || []).forEach((n: any) => s.add(n.type));
+    (graph.nodes || []).forEach((n: any) => s.add(nodeKind(n)));
     return Array.from(s).sort();
   }, [graph]);
 
@@ -85,11 +100,10 @@ export default function GraphView({ graph, report, summary }: Props) {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [selected, setSelected] = useState<any | null>(null);
-
   const [issuesOpen, setIssuesOpen] = useState(false);
 
   useEffect(() => {
-    const ns = toRfNodes(graph.nodes || []);
+    const ns = toRfNodes(graph.nodes || [], jobId);
     const es = toRfEdges(graph.edges || []);
     const laid = layoutDagre(ns, es, "LR");
     setNodes(laid.nodes);
@@ -97,7 +111,7 @@ export default function GraphView({ graph, report, summary }: Props) {
     setTypeFilter([]);
     setSearch("");
     setSelected(null);
-  }, [graph]);
+  }, [graph, jobId]);
 
   const filtered = useMemo(() => {
     const lower = search.trim().toLowerCase();
@@ -107,32 +121,50 @@ export default function GraphView({ graph, report, summary }: Props) {
     const keptNodeIds = new Set(
       (graph.nodes || [])
         .filter((n: any) => {
-          if (!keepType(n.type)) return false;
+          const kind = nodeKind(n);
+          if (!keepType(kind)) return false;
           if (!lower) return true;
-          const hay = `${n.label} ${n.path} ${n.type}`.toLowerCase();
+          const hay = `${n.label} ${n.path} ${kind}`.toLowerCase();
           return hay.includes(lower);
         })
         .map((n: any) => n.id)
     );
 
-    const ns = nodes.filter((n: { id: unknown; }) => keptNodeIds.has(n.id));
-    const es = edges.filter((e: { source: unknown; target: unknown; }) => keptNodeIds.has(e.source) && keptNodeIds.has(e.target));
+    const ns = nodes.filter((n) => keptNodeIds.has(n.id));
+    const es = edges.filter((e) => keptNodeIds.has(e.source) && keptNodeIds.has(e.target));
     return { nodes: ns, edges: es };
   }, [nodes, edges, graph, typeFilter, search]);
 
   const autoLayout = () => {
     const laid = layoutDagre(filtered.nodes, filtered.edges, "TB");
-    setNodes((prev: any[]) => {
+    setNodes((prev) => {
       const pos = new Map(laid.nodes.map((n) => [n.id, n.position]));
-      return prev.map((n: { id: any; position: any; }) => ({ ...n, position: pos.get(n.id) || n.position }));
+      return prev.map((n) => ({ ...n, position: pos.get(n.id) || n.position }));
     });
     enqueueSnackbar("Auto layout applied", { variant: "info" });
+  };
+
+  const onNodeClick = async (_: any, n: Node) => {
+    try {
+      const raw = (n.data as any)?.raw;
+      if (jobId) {
+        const details = await api.getNodeDetails(jobId, n.id);
+        setSelected(details);
+      } else {
+        setSelected({ node: raw, inbound: [], outbound: [] });
+      }
+    } catch (e: any) {
+      enqueueSnackbar(e.message || "Failed to load node details", { variant: "error" });
+      setSelected({ node: (n.data as any)?.raw, inbound: [], outbound: [] });
+    }
   };
 
   const issues = report?.issues || {};
   const orphanCount = (issues.orphans || []).length;
   const brokenCount = (issues.broken_refs || []).length;
   const cyclesCount = (issues.cycles || []).length;
+
+  const nodeTypes = useMemo(() => ({ resource: ResourceNode }), []);
 
   return (
     <ReactFlowProvider>
@@ -142,12 +174,12 @@ export default function GraphView({ graph, report, summary }: Props) {
             size="small"
             placeholder="Search nodes (label/path)"
             value={search}
-            onChange={(e: { target: { value: any; }; }) => setSearch(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)}
             sx={{ minWidth: 260 }}
           />
 
           <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
-            {allTypes.map((t: any) => {
+            {allTypes.map((t) => {
               const on = typeFilter.includes(t);
               return (
                 <Chip
@@ -156,9 +188,7 @@ export default function GraphView({ graph, report, summary }: Props) {
                   label={t}
                   variant={on ? "filled" : "outlined"}
                   onClick={() => {
-                    setTypeFilter((prev: any[]) =>
-                      prev.includes(t) ? prev.filter((x: any) => x !== t) : [...prev, t]
-                    );
+                    setTypeFilter((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
                   }}
                 />
               );
@@ -171,12 +201,7 @@ export default function GraphView({ graph, report, summary }: Props) {
             Auto layout
           </Button>
 
-          <Button
-            size="small"
-            startIcon={<BugReportIcon />}
-            onClick={() => setIssuesOpen(true)}
-            disabled={!report}
-          >
+          <Button size="small" startIcon={<BugReportIcon />} onClick={() => setIssuesOpen(true)} disabled={!report}>
             Issues ({orphanCount + brokenCount + cyclesCount})
           </Button>
         </Box>
@@ -188,25 +213,21 @@ export default function GraphView({ graph, report, summary }: Props) {
             nodes={filtered.nodes}
             edges={filtered.edges}
             fitView
-            onNodeClick={(_: any, n: { data: { raw: any; }; }) => setSelected(n.data.raw)}
+            nodeTypes={nodeTypes}
+            onNodeClick={onNodeClick}
           >
             <MiniMap
               maskColor={isDark ? "rgba(0,0,0,0.40)" : "rgba(0,0,0,0.08)"}
               nodeColor={isDark ? "rgba(250,250,250,0.45)" : "rgba(11,11,12,0.35)"}
               nodeStrokeColor={isDark ? "rgba(250,250,250,0.70)" : "rgba(11,11,12,0.55)"}
             />
-            <Controls
-              position="top-left"          // "top-left" | "top-right" | "bottom-left" | "bottom-right"
-              showZoom={true}              // + / - buttons
-              showFitView={true}           // fit view button
-              showInteractive={true}       // lock/unlock interactivity button
-            />
+            <Controls position="top-left" showZoom={true} showFitView={true} showInteractive={true} />
             <Background />
           </ReactFlow>
         </Box>
 
         <Drawer anchor="right" open={Boolean(selected)} onClose={() => setSelected(null)}>
-          <Box sx={{ width: 420, p: 2, display: "flex", flexDirection: "column", gap: 1 }}>
+          <Box sx={{ width: 460, p: 2, display: "flex", flexDirection: "column", gap: 1 }}>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <Typography variant="h6" sx={{ flex: 1 }}>
                 Node
@@ -215,16 +236,46 @@ export default function GraphView({ graph, report, summary }: Props) {
                 <CloseIcon />
               </IconButton>
             </Box>
-            {selected && (
+
+            {selected?.node ? (
               <>
-                <Typography variant="subtitle2">{selected.label}</Typography>
+                <Typography variant="subtitle2">{selected.node.label}</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {selected.type}
+                  {nodeKind(selected.node)}
                 </Typography>
                 <Divider />
+
                 <Typography variant="body2" sx={{ fontFamily: "ui-monospace, monospace" }}>
-                  {selected.path}
+                  {selected.node.path}
                 </Typography>
+
+                <Divider />
+
+                <Typography variant="subtitle2">
+                  Links (in {selected.inbound?.length || 0} / out {selected.outbound?.length || 0})
+                </Typography>
+                <Box
+                  sx={{
+                    fontFamily: "ui-monospace, monospace",
+                    fontSize: 12,
+                    whiteSpace: "pre",
+                    overflow: "auto",
+                    maxHeight: 160,
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    borderRadius: 2,
+                    p: 1
+                  }}
+                >
+                  {JSON.stringify(
+                    {
+                      inbound: (selected.inbound || []).slice(0, 50),
+                      outbound: (selected.outbound || []).slice(0, 50)
+                    },
+                    null,
+                    2
+                  )}
+                </Box>
+
                 <Divider />
                 <Typography variant="subtitle2">Raw</Typography>
                 <Box
@@ -233,16 +284,16 @@ export default function GraphView({ graph, report, summary }: Props) {
                     fontSize: 12,
                     whiteSpace: "pre",
                     overflow: "auto",
-                    maxHeight: 420,
+                    maxHeight: 360,
                     border: "1px solid rgba(255,255,255,0.12)",
                     borderRadius: 2,
                     p: 1
                   }}
                 >
-                  {JSON.stringify(selected, null, 2)}
+                  {JSON.stringify(selected.node, null, 2)}
                 </Box>
               </>
-            )}
+            ) : null}
           </Box>
         </Drawer>
 
@@ -250,7 +301,9 @@ export default function GraphView({ graph, report, summary }: Props) {
           <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             Issues
             <Box sx={{ flex: 1 }} />
-            <IconButton onClick={() => setIssuesOpen(false)}><CloseIcon /></IconButton>
+            <IconButton onClick={() => setIssuesOpen(false)}>
+              <CloseIcon />
+            </IconButton>
           </DialogTitle>
           <DialogContent dividers sx={{ height: 560 }}>
             {!report ? (

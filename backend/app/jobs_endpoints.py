@@ -60,12 +60,18 @@ def create_job(request: Request, body: CreateJobRequest, user: str = Depends(req
 
     # Initialize run files
     meta = RunMeta(
-        job_id=job_id, tool_id=body.tool_id, created_at=utcnow(), last_accessed_at=utcnow()
+        job_id=job_id,
+        tool_id=body.tool_id,
+        created_at=utcnow(),
+        last_accessed_at=utcnow(),
     )
     write_meta(meta)
 
     state = RunState(
-        job_id=job_id, tool_id=body.tool_id, status=JobStatus.queued, created_at=utcnow()
+        job_id=job_id,
+        tool_id=body.tool_id,
+        status=JobStatus.queued,
+        created_at=utcnow(),
     )
     write_state(state)
 
@@ -146,7 +152,8 @@ def list_artifacts(request: Request, job_id: str, user: str = Depends(require_au
                 )
             )
     return ok(
-        ArtifactsList(artifacts=artifacts), request_id=getattr(request.state, "request_id", None)
+        ArtifactsList(artifacts=artifacts),
+        request_id=getattr(request.state, "request_id", None),
     )
 
 
