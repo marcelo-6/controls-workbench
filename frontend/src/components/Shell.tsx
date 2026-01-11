@@ -26,6 +26,7 @@ import { OutputProvider } from "../state/output";
 import Brightness4Icon from "@mui/icons-material/Brightness4";
 import Brightness7Icon from "@mui/icons-material/Brightness7";
 import { useThemeMode } from "../theme-mode";
+import { VersionChip } from "./VersionChip";
 
 const drawerWidth = 260;
 
@@ -64,6 +65,7 @@ export default function Shell({ onLogout }: Props) {
             <Typography variant="h6" sx={{ flex: 1 }}>
               Controls Workbench
             </Typography>
+            <VersionChip version={__UI_VERSION__} />
             <Tooltip title={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
               <IconButton color="inherit" onClick={toggleMode} size="small" sx={{ ml: 1 }}>
                 {mode === "dark" ? <Brightness7Icon fontSize="small" /> : <Brightness4Icon fontSize="small" />}

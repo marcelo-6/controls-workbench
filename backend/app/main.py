@@ -25,11 +25,12 @@ from .storage import ensure_dirs
 from .tools_endpoints import ign as ignition_router
 from .tools_endpoints import router as tools_router
 from .uploads_endpoints import router as uploads_router
+from .version import get_backend_version
 
 ensure_dirs()
 api_logger = setup_logger("api", str(Path(settings.data_dir) / "logs" / "api.log"))
 
-app = FastAPI(title="Controls Workbench API", version="0.1.0")
+app = FastAPI(title="Controls Workbench API", version=get_backend_version())
 
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(
