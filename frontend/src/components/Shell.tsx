@@ -34,7 +34,7 @@ type Props = {
 };
 
 export default function Shell({ onLogout }: Props) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const location = useLocation();
   const { mode, toggleMode } = useThemeMode();
 
