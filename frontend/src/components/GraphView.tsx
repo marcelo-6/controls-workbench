@@ -23,7 +23,8 @@ import ReactFlow, {
   MiniMap,
   ReactFlowProvider,
   type Edge,
-  type Node
+  type Node,
+  useReactFlow
 } from "reactflow";
 
 import { useTheme } from "@mui/material/styles";
@@ -83,10 +84,30 @@ function toRfEdges(graphEdges: any[]): Edge[] {
   }));
 }
 
+function FitOnVersion({ version }: { version: number }) {
+  const { fitView } = useReactFlow();
+
+  useEffect(() => {
+    const raf1 = requestAnimationFrame(() => {
+      const raf2 = requestAnimationFrame(() => {
+        fitView({ padding: 0.12, duration: 250 });
+      });
+      return () => cancelAnimationFrame(raf2);
+    });
+
+    return () => cancelAnimationFrame(raf1);
+  }, [version, fitView]);
+
+  return null;
+}
+
+
+
 export default function GraphView({ jobId, graph, report, summary }: Props) {
   const { enqueueSnackbar } = useSnackbar();
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
+  const [fitVersion, setFitVersion] = useState(0);
 
   const allTypes = useMemo(() => {
     const s = new Set<string>();
@@ -111,6 +132,8 @@ export default function GraphView({ jobId, graph, report, summary }: Props) {
     setTypeFilter([]);
     setSearch("");
     setSelected(null);
+    // trigger fit after a new graph is loaded
+    setFitVersion((v) => v + 1);
   }, [graph, jobId]);
 
   const filtered = useMemo(() => {
@@ -136,12 +159,13 @@ export default function GraphView({ jobId, graph, report, summary }: Props) {
   }, [nodes, edges, graph, typeFilter, search]);
 
   const autoLayout = () => {
-    const laid = layoutDagre(filtered.nodes, filtered.edges, "TB");
+    const laid = layoutDagre(filtered.nodes, filtered.edges, "LR");
     setNodes((prev) => {
       const pos = new Map(laid.nodes.map((n) => [n.id, n.position]));
       return prev.map((n) => ({ ...n, position: pos.get(n.id) || n.position }));
     });
     enqueueSnackbar("Auto layout applied", { variant: "info" });
+    setFitVersion((v) => v + 1);
   };
 
   const onNodeClick = async (_: any, n: Node) => {
@@ -216,6 +240,7 @@ export default function GraphView({ jobId, graph, report, summary }: Props) {
             nodeTypes={nodeTypes}
             onNodeClick={onNodeClick}
           >
+            <FitOnVersion version={fitVersion} />
             <MiniMap
               maskColor={isDark ? "rgba(0,0,0,0.40)" : "rgba(0,0,0,0.08)"}
               nodeColor={isDark ? "rgba(250,250,250,0.45)" : "rgba(11,11,12,0.35)"}
