@@ -230,14 +230,6 @@ class IndexDB:
         finally:
             con.close()
 
-    def delete_run(self, job_id: str) -> None:
-        con = self._connect()
-        try:
-            con.execute("DELETE FROM runs WHERE job_id=?", (job_id,))
-            con.commit()
-        finally:
-            con.close()
-
     # ------------------- graph index -------------------
 
     def replace_graph(
@@ -496,6 +488,18 @@ class IndexDB:
             return (nodes, edges_out)
         finally:
             con.close()
+
+    def delete_run(self, job_id: str) -> int:
+        with self._connect() as con:
+            cur = con.execute("DELETE FROM runs WHERE job_id = ?", (job_id,))
+            con.commit()
+            return cur.rowcount
+
+    def clear_runs(self) -> int:
+        with self._connect() as con:
+            cur = con.execute("DELETE FROM runs")
+            con.commit()
+            return cur.rowcount
 
 
 @lru_cache(maxsize=1)

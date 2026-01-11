@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -10,6 +11,7 @@ from .api_models import (
     ArtifactInfo,
     ArtifactsList,
     CreateJobRequest,
+    DeleteRunsResult,
     JobCreated,
     JobState,
     JobStatus,
@@ -224,3 +226,140 @@ def recent_runs(
             RecentRuns(runs=items[:limit]),
             request_id=getattr(request.state, "request_id", None),
         )
+
+
+@runs_router.delete("/{job_id}", response_model=APIResponse[DeleteRunsResult])
+def delete_run(
+    request: Request,
+    job_id: str,
+    force: bool = Query(default=False),
+    user: str = Depends(require_auth),
+):
+    # Validate job_id (prevents weird path traversal too)
+    try:
+        uuid.UUID(job_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid job_id (must be a UUID)") from exc
+
+    st = read_state(job_id)
+    if st and st.status in (JobStatus.queued, JobStatus.running) and not force:
+        raise HTTPException(
+            status_code=409,
+            detail="Job is still running. Pass force=true to delete anyway.",
+        )
+
+    deleted_any = False
+    errors: list[str] = []
+
+    # 1) Delete filesystem run directory
+    rd = run_dir(job_id)
+    if rd.exists():
+        try:
+            shutil.rmtree(rd)
+            deleted_any = True
+        except Exception as e:
+            errors.append(f"Failed to delete run directory: {e}")
+
+    # 2) Delete from index DB (best effort)
+    try:
+        # If your get_index_db().delete_run returns affected rowcount, use it.
+        affected = get_index_db().delete_run(job_id)
+        if affected:
+            deleted_any = True
+    except Exception:
+        # keep endpoint resilient if DB is down / not present
+        pass
+
+    if errors:
+        raise HTTPException(status_code=500, detail="; ".join(errors))
+
+    if not deleted_any:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    return ok(
+        DeleteRunsResult(deleted=[job_id]),
+        message="Run deleted",
+        request_id=getattr(request.state, "request_id", None),
+    )
+
+
+@runs_router.delete("", response_model=APIResponse[DeleteRunsResult])
+def clear_runs(
+    request: Request,
+    confirm: bool = Query(default=False),
+    force: bool = Query(default=False),
+    user: str = Depends(require_auth),
+):
+    """
+    Deletes *all* runs from history:
+      - deletes /data/runs/<job_id> directories
+      - deletes rows from the index DB
+    Safety:
+      - requires confirm=true
+      - will skip queued/running unless force=true
+    """
+    if not confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="Refusing to delete all runs without confirm=true",
+        )
+
+    runs_root = data_path("runs")
+    deleted: list[str] = []
+    skipped: list[str] = []
+    errors: list[str] = []
+
+    # Collect candidates from filesystem
+    job_ids: list[str] = []
+    if runs_root.exists():
+        for d in runs_root.iterdir():
+            if not d.is_dir():
+                continue
+            # only consider UUID-like dirs
+            try:
+                uuid.UUID(d.name)
+            except Exception:
+                continue
+            job_ids.append(d.name)
+
+    # Delete per-run so we can honor "skip running unless force"
+    for job_id in job_ids:
+        st = read_state(job_id)
+        if st and st.status in (JobStatus.queued, JobStatus.running) and not force:
+            skipped.append(job_id)
+            continue
+
+        rd = run_dir(job_id)
+        if rd.exists():
+            try:
+                shutil.rmtree(rd)
+                deleted.append(job_id)
+            except Exception as e:
+                errors.append(f"{job_id}: failed to delete run directory: {e}")
+                continue
+        else:
+            # directory already gone; still try to delete DB row
+            deleted.append(job_id)
+
+        # Remove from index DB (best effort)
+        try:
+            get_index_db().delete_run(job_id)
+        except Exception:
+            pass
+
+    # If we truly deleted everything and nothing was skipped, we can clear DB in one shot too.
+    # (Optional optimization — safe even if table is already empty.)
+    if force and not skipped:
+        try:
+            get_index_db().clear_runs()
+        except Exception:
+            pass
+
+    if errors:
+        raise HTTPException(status_code=500, detail="; ".join(errors))
+
+    return ok(
+        DeleteRunsResult(deleted=deleted, skipped=skipped),
+        message=f"Cleared runs (deleted={len(deleted)}, skipped={len(skipped)})",
+        request_id=getattr(request.state, "request_id", None),
+    )
