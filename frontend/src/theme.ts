@@ -22,7 +22,11 @@ export function getAppTheme(mode: PaletteMode) {
         primary: textPrimary,
         secondary: alpha(textPrimary, 0.64)
       },
-      divider: alpha(textPrimary, isDark ? 0.10 : 0.12)
+      divider: alpha(textPrimary, isDark ? 0.10 : 0.12),
+      primary: {
+        main: textPrimary,
+        contrastText: textPrimary,
+      },
     },
 
     typography: {

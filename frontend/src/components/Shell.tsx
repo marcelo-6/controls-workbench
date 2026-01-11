@@ -52,7 +52,11 @@ export default function Shell({ onLogout }: Props) {
   return (
     <OutputProvider>
       <Box sx={{ display: "flex", height: "100vh" }}>
-        <AppBar position="fixed" sx={{ zIndex: (t) => t.zIndex.drawer + 1 }}>
+        <AppBar   position="fixed"
+                  color="primary"
+                  enableColorOnDark
+                  sx={{ zIndex: (t) => t.zIndex.drawer + 1 }}
+                >
           <Toolbar sx={{ gap: 1 }}>
             <IconButton color="inherit" edge="start" onClick={() => setCollapsed((v) => !v)}>
               <MenuIcon />
@@ -61,7 +65,7 @@ export default function Shell({ onLogout }: Props) {
               Controls Workbench
             </Typography>
             <Tooltip title={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
-              <IconButton onClick={toggleMode} size="small" sx={{ ml: 1 }}>
+              <IconButton color="inherit" onClick={toggleMode} size="small" sx={{ ml: 1 }}>
                 {mode === "dark" ? <Brightness7Icon fontSize="small" /> : <Brightness4Icon fontSize="small" />}
               </IconButton>
             </Tooltip>
