@@ -68,6 +68,7 @@ CHANGELOG_FILE := CHANGELOG.md
 PY        ?= python3
 UV        ?= uv
 PNPM      ?= pnpm
+NPM       ?= npm
 GIT_CLIFF ?= git-cliff
 
 # ----------------------------
@@ -197,13 +198,16 @@ check-tools: ## Check common dev tools (must be runnable, not just present)
 	$(call REQUIRE_CMD,$(UV),check-tools)
 	$(call REQUIRE_OK,$(UV) --version,uv is installed but not runnable,check-tools)
 
-# 	$(call REQUIRE_CMD,node,check-tools)
-# 	$(call REQUIRE_OK,node --version,node is installed but not runnable,check-tools)
+	$(call REQUIRE_CMD,node,check-tools)
+	$(call REQUIRE_OK,node --version,node is installed but not runnable,check-tools)
+
+	$(call REQUIRE_CMD,$(NPM),check-tools)
+	$(call REQUIRE_OK,$(NPM) --version,npm is found but fails to run,check-tools)
 
 	$(call REQUIRE_CMD,$(PNPM),check-tools)
 	$(call REQUIRE_OK,$(PNPM) --version,pnpm is found but fails to run (often node missing in WSL),check-tools)
 
-	$(call OK,check-tools,OK: git, python, uv, node, pnpm)
+	$(call OK,check-tools,OK: git, python, uv, node, npm, pnpm)
 
 check-tools-release: ## Check tools required for release flow
 	$(call LOG,check-tools-release,Checking release tooling...)
@@ -215,13 +219,13 @@ check-tools-release: ## Check tools required for release flow
 	$(call REQUIRE_OK,$(UV) --version,uv is installed but not runnable,check-tools-release)
 	$(call REQUIRE_OK,$(GIT_CLIFF) --version,git-cliff is installed but not runnable,check-tools-release)
 
-# 	$(call REQUIRE_CMD,node,check-tools-release)
-# 	$(call REQUIRE_OK,node --version,node is installed but not runnable,check-tools-release)
+	$(call REQUIRE_CMD,node,check-tools-release)
+	$(call REQUIRE_OK,node --version,node is installed but not runnable,check-tools-release)
 
-	$(call REQUIRE_CMD,$(PNPM),check-tools-release)
-	$(call REQUIRE_OK,$(PNPM) --version,pnpm is found but fails to run (often node missing in WSL),check-tools-release)
+	$(call REQUIRE_CMD,$(NPM),check-tools)
+	$(call REQUIRE_OK,$(NPM) --version,npm is found but fails to run,check-tools)
 
-	$(call OK,check-tools-release,OK: release tooling present (git, python, uv, git-cliff, node, pnpm))
+	$(call OK,check-tools-release,OK: release tooling present (git, python, uv, git-cliff, node, npm))
 
 check-clean: ## Ensure git working tree is clean
 	$(call LOG,check-clean,Checking git working tree is clean...)
@@ -359,7 +363,7 @@ update-backend-version: ## Update backend/pyproject.toml version + validate
 
 update-frontend-version: ## Update frontend/package.json version + validate
 	$(call LOG,update-frontend-version,Updating frontend version -> $(NORMALIZED_VERSION))
-	$(call RUN,update-frontend-version,cd "$(FRONTEND_DIR)" && "$(PNPM)" version "$(NORMALIZED_VERSION)" --no-git-tag-version >/dev/null 2>&1)
+	$(call RUN,update-frontend-version,cd "$(FRONTEND_DIR)" && "$(NPM)" version "$(NORMALIZED_VERSION)" --no-git-tag-version >/dev/null 2>&1)
 	if [ "$(DRY_RUN)" = "1" ]; then \
 		$(call WARN,update-frontend-version,DRY_RUN: validation skipped.); \
 	else \
