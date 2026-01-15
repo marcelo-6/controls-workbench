@@ -5,9 +5,9 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 
-from .api_models import APIResponse, UploadCreated, UploadFileInfo
-from .api_response import ok
+from .api_models import UploadCreated, UploadFileInfo
 from .auth import require_auth
+from .core.responses import APIResponse, ok
 from .uploads_storage import upload_dir
 
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
@@ -27,7 +27,8 @@ def _save_upload(dst: Path, up: UploadFile) -> int:
             size += len(chunk)
             if size > MAX_UPLOAD_BYTES:
                 raise HTTPException(
-                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Upload too large"
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail="Upload too large",
                 )
             f.write(chunk)
     return size

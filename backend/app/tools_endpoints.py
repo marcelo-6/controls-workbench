@@ -6,15 +6,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from .api_models import (
     APIModel,
-    APIResponse,
     IgnitionNodeDetailsPayload,
     IgnitionSearchResultsPayload,
     IgnitionSubgraphPayload,
     IgnitionTreePayload,
     ToolsList,
 )
-from .api_response import ok
 from .auth import require_auth
+from .core.responses import APIResponse, ok
 from .index_db import get_index_db
 from .run_storage import run_dir, touch_meta_access
 from .tools_registry import list_tools
@@ -24,7 +23,10 @@ router = APIRouter(prefix="/api/tools", tags=["tools"])
 
 @router.get("", response_model=APIResponse[ToolsList])
 def tools(request: Request, user: str = Depends(require_auth)):
-    return ok(ToolsList(tools=list_tools()), request_id=getattr(request.state, "request_id", None))
+    return ok(
+        ToolsList(tools=list_tools()),
+        request_id=getattr(request.state, "request_id", None),
+    )
 
 
 class GraphPayload(APIModel):
@@ -59,7 +61,10 @@ def get_report(request: Request, job_id: str, user: str = Depends(require_auth))
     if not fp.exists():
         raise HTTPException(status_code=404, detail="Report not found")
     report = json.loads(fp.read_text(encoding="utf-8"))
-    return ok(ReportPayload(report=report), request_id=getattr(request.state, "request_id", None))
+    return ok(
+        ReportPayload(report=report),
+        request_id=getattr(request.state, "request_id", None),
+    )
 
 
 @ign.get("/summary/{job_id}", response_model=APIResponse[SummaryPayload])
@@ -95,7 +100,10 @@ def get_tree(request: Request, job_id: str, user: str = Depends(require_auth)):
 
 @ign.get("/search/{job_id}", response_model=APIResponse[IgnitionSearchResultsPayload])
 def search(
-    request: Request, job_id: str, q: str = Query(min_length=1), user: str = Depends(require_auth)
+    request: Request,
+    job_id: str,
+    q: str = Query(min_length=1),
+    user: str = Depends(require_auth),
 ):
     touch_meta_access(job_id)
     matches = get_index_db().search(job_id, q, limit=100)
@@ -131,7 +139,11 @@ def subgraph(
     """Return a pre-sliced graph around the selected roots."""
     touch_meta_access(job_id)
     nodes, edges = get_index_db().subgraph(
-        job_id=job_id, roots=root_ids, depth=depth, direction=direction, max_nodes=max_nodes
+        job_id=job_id,
+        roots=root_ids,
+        depth=depth,
+        direction=direction,
+        max_nodes=max_nodes,
     )
     graph = {
         "meta": {

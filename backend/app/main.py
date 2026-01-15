@@ -1,117 +1,126 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.routes import info
 
-from .api_models import ErrorField
-from .api_response import fail
+# Routers (still old for now — Step 6 will move them)
+from app.auth import router as auth_router
+from app.core.exception_handlers import register_exception_handlers
+from app.core.logging import configure_logging, get_logger
+from app.core.middleware import RequestIdMiddleware
+from app.core.responses import ok
+from app.core.settings import settings
 
-# Routers
-from .auth import router as auth_router
-from .core.settings import settings
-from .index_db import get_index_db
-from .jobs_endpoints import router as jobs_router
-from .jobs_endpoints import runs_router
-from .logging_conf import setup_logger
-from .logs_endpoints import router as logs_router
-from .middleware import RequestIdMiddleware
-from .retention import cleanup_runs, cleanup_uploads
-from .storage import ensure_dirs
-from .tools_endpoints import ign as ignition_router
-from .tools_endpoints import router as tools_router
-from .uploads_endpoints import router as uploads_router
-
-ensure_dirs()
-api_logger = setup_logger("api", str(Path(settings.data_dir) / "logs" / "api.log"))
-
-app = FastAPI(
-    title=settings.project_name,
-    description=settings.project_description,
-    version=settings.backend_version,
-)
-
-app.add_middleware(RequestIdMiddleware)
-app.add_middleware(
-    SessionMiddleware, secret_key=settings.secret_key, same_site="lax", https_only=False
-)
+# Legacy infra for now (will be migrated in Step 2–4)
+from app.index_db import get_index_db
+from app.jobs_endpoints import router as jobs_router
+from app.jobs_endpoints import runs_router
+from app.logs_endpoints import router as logs_router
+from app.retention import cleanup_runs, cleanup_uploads
+from app.tools_endpoints import ign as ignition_router
+from app.tools_endpoints import router as tools_router
+from app.uploads_endpoints import router as uploads_router
 
 
-@app.get("/api/health")
-def health():
-    return {"status": "ok"}
+def create_app() -> FastAPI:
+    """
+    FastAPI application factory.
 
+    Responsibilities (by design):
+    - Construct the FastAPI app with project metadata from settings.
+    - Register global middleware (request_id, sessions).
+    - Register global exception handlers (uniform APIResponse envelope).
+    - Mount routers (legacy routers for now; will be migrated in Step 6).
+    - Register startup lifecycle hooks.
 
-@app.exception_handler(HTTPException)
-async def http_exc_handler(request: Request, exc: HTTPException):
-    rid = getattr(request.state, "request_id", None)
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=fail(code="HTTP_ERROR", detail=str(exc.detail), request_id=rid).model_dump(
-            mode="json", by_alias=True
-        ),
+    Business logic must not live here; it belongs in domain services.
+    """
+    configure_logging()
+    api_logger = get_logger("api", str(settings.logs_dir / "api.log"))
+
+    app = FastAPI(
+        title=settings.project_name,
+        description=settings.project_description,
+        version=settings.backend_version,
     )
 
-
-@app.exception_handler(RequestValidationError)
-async def validation_exc_handler(request: Request, exc: RequestValidationError):
-    rid = getattr(request.state, "request_id", None)
-    fields = []
-    for err in exc.errors():
-        loc = ".".join(str(x) for x in err.get("loc", []) if x != "body")
-        fields.append(ErrorField(field=loc or "body", message=err.get("msg", "Invalid value")))
-    resp = fail(
-        code="VALIDATION_ERROR",
-        detail="Request validation failed",
-        request_id=rid,
-        fields=fields,
+    # Middleware
+    app.add_middleware(RequestIdMiddleware)
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.secret_key,
+        same_site="lax",
+        https_only=False,
     )
-    return JSONResponse(status_code=422, content=resp.model_dump(mode="json", by_alias=True))
 
+    # Exception handlers (uniform API response contract)
+    register_exception_handlers(app)
 
-@app.exception_handler(Exception)
-async def unhandled_exc_handler(request: Request, exc: Exception):
-    rid = getattr(request.state, "request_id", None)
-    api_logger.exception("Unhandled error request_id=%s: %s", rid, exc)
-    resp = fail(code="INTERNAL_ERROR", detail="Internal server error", request_id=rid)
-    return JSONResponse(status_code=500, content=resp.model_dump(mode="json", by_alias=True))
+    # Simple health endpoint (kept stable for docker/ops checks)
+    @app.get("/api/health")
+    async def health():
+        """
+        Lightweight liveness endpoint.
 
+        Returns:
+            APIResponse[dict]: Always returns success with a small payload.
+        """
+        return ok({"status": "ok"})
 
-# Include routers
-app.include_router(auth_router)
-app.include_router(uploads_router)
-app.include_router(jobs_router)
-app.include_router(runs_router)
-app.include_router(tools_router)
-app.include_router(ignition_router)
-app.include_router(logs_router)
-app.include_router(info.router, prefix="/api")
+    # Include routers
+    app.include_router(auth_router)
+    app.include_router(uploads_router)
+    app.include_router(jobs_router)
+    app.include_router(runs_router)
+    app.include_router(tools_router)
+    app.include_router(ignition_router)
+    app.include_router(logs_router)
+    app.include_router(info.router, prefix="/api")
 
+    async def _retention_loop() -> None:
+        """
+        Periodic retention maintenance.
 
-async def _retention_loop():
-    # small, safe loop; deletes old uploads and trims runs
-    while False:  # TODO this should be run once when the user uploads something
+        Note:
+            This is intentionally conservative and can be replaced later with:
+            - event-driven cleanup (e.g., after upload/job completion)
+            - a scheduled task via Huey
+            - or a dedicated maintenance service
+        """
+        while False:  # TODO: enable later (or run on-demand)
+            try:
+                del_uploads = cleanup_uploads()
+                run_stats = cleanup_runs()
+                api_logger.info("retention: deleted_uploads=%s stats=%s", del_uploads, run_stats)
+            except Exception as e:
+                api_logger.exception("retention loop error: %s", e)
+            await asyncio.sleep(60 * 60)
+
+    @app.on_event("startup")
+    async def _startup() -> None:
+        """
+        Startup hook for lightweight initialization.
+
+        Responsibilities:
+        - Initialize required local storage/database structures.
+        - Start background maintenance tasks (optional).
+
+        Heavy work belongs in worker processes, not the API process.
+        """
+        api_logger.info("API startup")
         try:
-            del_uploads = cleanup_uploads()
-            run_stats = cleanup_runs()
-            api_logger.info("retention: deleted_uploads=%s stats=%s", del_uploads, run_stats)
+            get_index_db()
         except Exception as e:
-            api_logger.exception("retention loop error: %s", e)
-        await asyncio.sleep(60 * 60)  # hourly
+            api_logger.exception("Index DB init failed: %s", e)
+
+        asyncio.create_task(_retention_loop())
+
+    return app
 
 
-@app.on_event("startup")
-async def _startup():
-    api_logger.info("API startup")
-    # Initialize the SQLite catalog early (creates schema if missing).
-    try:
-        get_index_db()
-    except Exception as e:
-        api_logger.exception("Index DB init failed: %s", e)
-    asyncio.create_task(_retention_loop())
+# Uvicorn entrypoint expects `app` at module scope
+app = create_app()

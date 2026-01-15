@@ -1,5 +1,6 @@
 """
-settings.py Application settings and project metadata.
+app/core/settings.py
+Application settings and project metadata.
 
 This module is the single source of truth for runtime configuration in the backend.
 It combines environment-driven configuration (via `pydantic-settings` v2) with
@@ -31,7 +32,7 @@ import os
 import tomllib
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -125,6 +126,9 @@ class Settings(BaseSettings):
     # ---- Logging ----
     log_max_bytes: int = Field(default=20 * 1024**2)  # 20 MiB
     log_backup_count: int = Field(default=5)
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
+        default="DEBUG", description="Logging verbosity level."
+    )
 
     # ---- Huey ----
     huey_db: Path | None = Field(

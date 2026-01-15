@@ -6,19 +6,19 @@ import time
 from pathlib import Path
 
 from .api_models import JobStatus, ToolCategory
+from .core.logging import get_logger
 from .core.settings import settings
 from .ignition.engine import build_graph
 from .ignition.indexing import build_index
 from .ignition.parser import safe_extract_zip
 from .index_db import get_index_db
-from .logging_conf import setup_logger
 from .queue import huey
 from .run_models import InputFile, RunMeta, RunState, Stats, Versions, utcnow
 from .run_storage import append_event, run_dir, write_meta, write_state
 from .tools_registry import Tool, register
 from .uploads_storage import file_sha256, find_project_zip, find_tags_json
 
-worker_logger = setup_logger("worker", str(Path(settings.data_dir) / "logs" / "worker.log"))
+worker_logger = get_logger("worker", str(Path(settings.data_dir) / "logs" / "worker.log"))
 
 
 def _write_json(p: Path, obj) -> None:

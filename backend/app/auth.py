@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from .api_models import APIResponse, LoginRequest, LoginResponse, MeResponse
-from .api_response import ok
+from .api_models import LoginRequest, LoginResponse, MeResponse
+from .core.responses import APIResponse, ok
 from .core.settings import settings
 
 
