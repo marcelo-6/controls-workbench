@@ -7,16 +7,16 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.routes import info
 
-# Routers (still old for now — Step 6 will move them)
+# Routers (still old for now - Step 6 will move them)
 from app.auth import router as auth_router
 from app.core.exception_handlers import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestIdMiddleware
 from app.core.responses import ok
 from app.core.settings import settings
+from app.infra.db.db import init_db
 
 # Legacy infra for now (will be migrated in Step 2–4)
-from app.index_db import get_index_db
 from app.jobs_endpoints import router as jobs_router
 from app.jobs_endpoints import runs_router
 from app.logs_endpoints import router as logs_router
@@ -113,9 +113,9 @@ def create_app() -> FastAPI:
         """
         api_logger.info("API startup")
         try:
-            get_index_db()
+            init_db(settings.db_path)
         except Exception as e:
-            api_logger.exception("Index DB init failed: %s", e)
+            api_logger.exception("DB init failed: %s", e)
 
         asyncio.create_task(_retention_loop())
 

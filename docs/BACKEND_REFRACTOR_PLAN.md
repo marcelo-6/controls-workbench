@@ -1,4 +1,4 @@
-# Backend Refactor Plan — Controls Workbench (DB-first)
+# Backend Refactor Plan - Controls Workbench (DB-first)
 
 ## Objective
 Refactor the backend into a clean FastAPI + modern Python architecture with:
@@ -24,7 +24,7 @@ Current backend is mostly flat with:
 
 ---
 
-## Phase 0 — Testing Foundation (must come first)
+## Phase 0 - Testing Foundation (must come first)
 ### Goals
 - Create a safety harness so bulk changes remain safe.
 
@@ -51,7 +51,7 @@ Current backend is mostly flat with:
 
 ---
 
-## Phase 1 — Introduce SQLite schema + repositories (DB layer first)
+## Phase 1 - Introduce SQLite schema + repositories (DB layer first)
 ### Goals
 - Establish DB as the future source of truth before moving endpoints.
 
@@ -75,7 +75,7 @@ Current backend is mostly flat with:
 
 ---
 
-## Phase 2 — Mechanical restructure (move files to target layout)
+## Phase 2 - Mechanical restructure (move files to target layout)
 ### Goals
 - Create new folders and relocate modules with minimal behavior changes.
 
@@ -91,7 +91,7 @@ Current backend is mostly flat with:
 
 ---
 
-## Phase 3 — Storage boundary + Path normalization
+## Phase 3 - Storage boundary + Path normalization
 ### Goals
 - Eliminate string/path bugs and stop building paths outside storage.
 
@@ -107,7 +107,7 @@ Current backend is mostly flat with:
 
 ---
 
-## Phase 4 — Standardize APIResponse + global error handling
+## Phase 4 - Standardize APIResponse + global error handling
 ### Goals
 - Every endpoint returns the same contract, including errors.
 - Datetimes are always JSON safe.
@@ -123,7 +123,7 @@ Current backend is mostly flat with:
 
 ---
 
-## Phase 5 — Extract domain services; make API layer thin
+## Phase 5 - Extract domain services; make API layer thin
 ### Goals
 - Convert each endpoint group to: Router → Service → Repo/Storage
 
@@ -142,7 +142,7 @@ Current backend is mostly flat with:
 
 ---
 
-## Phase 6 — Queue/task modernization (Huey + sync runner for tests)
+## Phase 6 - Queue/task modernization (Huey + sync runner for tests)
 ### Goals
 - Background execution is clean; tests are deterministic.
 
@@ -160,7 +160,7 @@ Current backend is mostly flat with:
 
 ---
 
-## Phase 7 — Tool module hardening (Ignition Graph)
+## Phase 7 - Tool module hardening (Ignition Graph)
 ### Goals
 - Make ignition tool code pure and heavily tested.
 

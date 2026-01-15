@@ -347,7 +347,7 @@ def clear_runs(
             pass
 
     # If we truly deleted everything and nothing was skipped, we can clear DB in one shot too.
-    # (Optional optimization — safe even if table is already empty.)
+    # (Optional optimization - safe even if table is already empty.)
     if force and not skipped:
         try:
             get_index_db().clear_runs()

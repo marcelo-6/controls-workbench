@@ -1,4 +1,4 @@
-# DB_SCHEMA.md — Controls Workbench (SQLite)
+# DB_SCHEMA.md - Controls Workbench (SQLite)
 
 ## Goals
 SQLite stores **queryable state and indexes**. Filesystem stores **large blobs** (uploads + artifact payloads).

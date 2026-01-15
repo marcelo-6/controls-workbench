@@ -172,7 +172,6 @@ endef
 	commit-release tag-release push-release \
 	prepare-release release \
 	up build build-all-no-cache build-frontend up-prod zip \
-	lint format test precommit
 
 # ----------------------------
 # Help

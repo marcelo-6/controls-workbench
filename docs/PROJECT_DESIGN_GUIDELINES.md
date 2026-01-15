@@ -1,4 +1,4 @@
-# Controls Workbench — Project Design Guidelines
+# Controls Workbench - Project Design Guidelines
 
 ## Purpose
 Controls Workbench is a personal toolbox for controls/automation engineers. v0.x prioritizes:
