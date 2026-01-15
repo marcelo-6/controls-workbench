@@ -197,8 +197,8 @@ check-tools: ## Check common dev tools (must be runnable, not just present)
 	$(call REQUIRE_CMD,$(UV),check-tools)
 	$(call REQUIRE_OK,$(UV) --version,uv is installed but not runnable,check-tools)
 
-	$(call REQUIRE_CMD,node,check-tools)
-	$(call REQUIRE_OK,node --version,node is installed but not runnable,check-tools)
+# 	$(call REQUIRE_CMD,node,check-tools)
+# 	$(call REQUIRE_OK,node --version,node is installed but not runnable,check-tools)
 
 	$(call REQUIRE_CMD,$(PNPM),check-tools)
 	$(call REQUIRE_OK,$(PNPM) --version,pnpm is found but fails to run (often node missing in WSL),check-tools)
@@ -215,8 +215,8 @@ check-tools-release: ## Check tools required for release flow
 	$(call REQUIRE_OK,$(UV) --version,uv is installed but not runnable,check-tools-release)
 	$(call REQUIRE_OK,$(GIT_CLIFF) --version,git-cliff is installed but not runnable,check-tools-release)
 
-	$(call REQUIRE_CMD,node,check-tools-release)
-	$(call REQUIRE_OK,node --version,node is installed but not runnable,check-tools-release)
+# 	$(call REQUIRE_CMD,node,check-tools-release)
+# 	$(call REQUIRE_OK,node --version,node is installed but not runnable,check-tools-release)
 
 	$(call REQUIRE_CMD,$(PNPM),check-tools-release)
 	$(call REQUIRE_OK,$(PNPM) --version,pnpm is found but fails to run (often node missing in WSL),check-tools-release)
