@@ -65,7 +65,10 @@ class UploadsRepo:
                 ),
             )
         except Exception as e:
-            raise DBError(detail=f"Failed to create upload {upload_id}: {e}") from e
+            raise DBError(
+                code="DB_INSERT_UPLOAD_FAILED",
+                detail=f"Failed to create upload {upload_id}: {e}",
+            ) from e
 
     def get(self, upload_id: str) -> dict[str, Any] | None:
         """Fetch an upload row by id."""
@@ -83,11 +86,17 @@ class UploadsRepo:
                 (last_accessed_at, upload_id),
             )
         except Exception as e:
-            raise DBError(detail=f"Failed to touch upload {upload_id}: {e}") from e
+            raise DBError(
+                code="DB_UPDATE_LAST_ACCESSED_UPLOAD_FAILED",
+                detail=f"Failed to touch upload {upload_id}: {e}",
+            ) from e
 
     def delete(self, upload_id: str) -> None:
         """Hard delete an upload row (use carefully; RESTRICT may block)."""
         try:
             self._conn.execute("DELETE FROM uploads WHERE upload_id = ?", (upload_id,))
         except Exception as e:
-            raise DBError(detail=f"Failed to delete upload {upload_id}: {e}") from e
+            raise DBError(
+                code="DB_DELETE_UPLOAD_FAILED",
+                detail=f"Failed to delete upload {upload_id}: {e}",
+            ) from e

@@ -23,7 +23,8 @@ from dataclasses import dataclass
 from typing import Any
 
 
-@dataclass(frozen=True, slots=True)
+# @dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class AppError(Exception):
     """
     Base class for application errors raised by domain/services/infra code.

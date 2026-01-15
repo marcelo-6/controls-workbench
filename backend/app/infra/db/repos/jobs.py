@@ -18,6 +18,7 @@ import sqlite3
 from typing import Any
 
 from app.core.errors import DBError
+from app.core.time import utcnow
 
 
 class JobsRepo:
@@ -33,7 +34,7 @@ class JobsRepo:
         tool_id: str,
         upload_id: str,
         created_at: str,
-        last_accessed_at: str,
+        last_accessed_at: str | str = str(utcnow()),
         status: str = "queued",
         params_json: str | None = None,
     ) -> None:
@@ -59,7 +60,10 @@ class JobsRepo:
                 ),
             )
         except Exception as e:
-            raise DBError(detail=f"Failed to create job {job_id}: {e}") from e
+            raise DBError(
+                code="DB_INSERT_JOB_FAILED",
+                detail=f"Failed to create job {job_id}: {e}",
+            ) from e
 
     def get(self, job_id: str) -> dict[str, Any] | None:
         """Fetch a job row by id."""
@@ -77,7 +81,10 @@ class JobsRepo:
                 (last_accessed_at, job_id),
             )
         except Exception as e:
-            raise DBError(detail=f"Failed to touch job {job_id}: {e}") from e
+            raise DBError(
+                code="DB_UPDATE_LAST_ACCESSED_JOB_FAILED",
+                detail=f"Failed to touch job {job_id}: {e}",
+            ) from e
 
     def set_status(
         self,
@@ -125,7 +132,10 @@ class JobsRepo:
                 tuple(params),
             )
         except Exception as e:
-            raise DBError(detail=f"Failed to update job {job_id}: {e}") from e
+            raise DBError(
+                code="DB_UPDATE_JOB_FAILED",
+                detail=f"Failed to update job {job_id}: {e}",
+            ) from e
 
     def recent(self, *, limit: int = 30) -> list[dict[str, Any]]:
         """Return the most recent non-deleted jobs (created_at DESC)."""
@@ -145,4 +155,7 @@ class JobsRepo:
         try:
             self._conn.execute("DELETE FROM jobs WHERE job_id = ?", (job_id,))
         except Exception as e:
-            raise DBError(detail=f"Failed to delete job {job_id}: {e}") from e
+            raise DBError(
+                code="DB_DELETE_JOB_FAILED",
+                detail=f"Failed to delete job {job_id}: {e}",
+            ) from e

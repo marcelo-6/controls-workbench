@@ -24,8 +24,8 @@ from app.infra.storage.uploads_fs import (
     DEFAULT_PROJECT_ZIP_NAME,
     DEFAULT_TAGS_JSON_NAME,
     delete_upload_files,
-    open_tags_json_path,
-    open_upload_zip_path,
+    get_tags_json_path,
+    get_upload_zip_path,
     save_upload,
 )
 
@@ -59,8 +59,8 @@ def test_save_upload_writes_project_zip_and_returns_metadata(
     assert p.exists()
     assert p.read_bytes() == payload
 
-    assert open_upload_zip_path(upload_id) == p
-    assert open_tags_json_path(upload_id) is None
+    assert get_upload_zip_path(upload_id) == p
+    assert get_tags_json_path(upload_id) is None
 
 
 def test_save_upload_writes_optional_tags_json_and_updates_sha(
@@ -89,7 +89,7 @@ def test_save_upload_writes_optional_tags_json_and_updates_sha(
     assert (d / DEFAULT_PROJECT_ZIP_NAME).read_bytes() == project_bytes
     assert (d / DEFAULT_TAGS_JSON_NAME).read_bytes() == tags_bytes
 
-    assert open_tags_json_path(upload_id) == (d / DEFAULT_TAGS_JSON_NAME)
+    assert get_tags_json_path(upload_id) == (d / DEFAULT_TAGS_JSON_NAME)
 
 
 def test_delete_upload_files_removes_upload_directory(isolated_data_dir: Path) -> None:

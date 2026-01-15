@@ -3,7 +3,7 @@
 Time utilities used across the backend.
 
 This module centralizes time-related helpers to ensure consistent handling of
-time zones and serialization throughout the application.
+time zones and serialization throughout the application. timestamps consistent (UTC, ISO-8601)
 
 Design principles:
 - Always use timezone-aware UTC timestamps for persisted state and API metadata.
@@ -29,3 +29,13 @@ def utcnow() -> datetime:
         datetime: A timezone-aware datetime in UTC.
     """
     return datetime.now(UTC)
+
+
+def utcnow_iso() -> str:
+    """
+    Return the current UTC time as an ISO-8601 string.
+
+    Returns:
+        str: UTC timestamp formatted as ISO-8601 with 'Z' suffix (e.g. '2026-01-15T12:34:56.789Z').
+    """
+    return utcnow().isoformat(timespec="milliseconds").replace("+00:00", "Z")

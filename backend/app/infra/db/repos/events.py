@@ -45,7 +45,10 @@ class EventsRepo:
                 (job_id, ts, level, kind, message, payload_json),
             )
         except Exception as e:
-            raise DBError(detail=f"Failed to append event for job {job_id}: {e}") from e
+            raise DBError(
+                code="DB_INSERT_EVENT_FAILED",
+                detail=f"Failed to append event for job {job_id}: {e}",
+            ) from e
 
     def tail(self, *, job_id: str, limit: int = 2000) -> list[dict[str, Any]]:
         """

@@ -65,7 +65,10 @@ class ArtifactsRepo:
                 ),
             )
         except Exception as e:
-            raise DBError(detail=f"Failed to upsert artifact {kind} for job {job_id}: {e}") from e
+            raise DBError(
+                code="DB_INSERT_ARTIFACT_FAILED",
+                detail=f"Failed to upsert artifact {kind} for job {job_id}: {e}",
+            ) from e
 
     def list(self, job_id: str) -> list[dict[str, Any]]:
         """List all artifacts for a job."""

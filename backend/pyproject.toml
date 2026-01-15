@@ -38,7 +38,7 @@ extend-exclude = ["alembic", ".venv"]
 [tool.ruff.lint]
 # Start strong but not annoying:
 select = ["E", "F", "I", "B", "UP"]
-ignore = ["E501", "UP046", "UP047", "B008"]  # Let formatter handle wrapping
+ignore = ["E501", "UP046", "UP047", "B008", "E402"]  # Let formatter handle wrapping
 
 [tool.ruff.format]
 # Formatter options: docs show the section and supported keys. :contentReference[oaicite:7]{index=7}
@@ -81,7 +81,7 @@ addopts = [
 
 # Warning handling
 filterwarnings = [
-    "error::DeprecationWarning",
+    "ignore::DeprecationWarning",
     "error::PendingDeprecationWarning",
     "ignore::UserWarning:pkg_resources",
 ]

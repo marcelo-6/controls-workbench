@@ -126,7 +126,7 @@ def save_upload(
     )
 
 
-def open_upload_zip_path(upload_id: str) -> Path:
+def get_upload_zip_path(upload_id: str) -> Path:
     """
     Return the path to the saved project zip for the given upload.
 
@@ -139,7 +139,7 @@ def open_upload_zip_path(upload_id: str) -> Path:
     return upload_dir(upload_id) / DEFAULT_PROJECT_ZIP_NAME
 
 
-def open_tags_json_path(upload_id: str) -> Path | None:
+def get_tags_json_path(upload_id: str) -> Path | None:
     """
     Return the path to the saved tags JSON for the given upload, if present.
 

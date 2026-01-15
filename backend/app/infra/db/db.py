@@ -52,7 +52,10 @@ def init_db(db_path: Path) -> None:
             conn.close()
 
     except Exception as e:
-        raise DBError(detail=f"Failed to initialize DB at {db_path}: {e}") from e
+        raise DBError(
+            code="DB_SESSION_INITIALIZE_FAILED",
+            detail=f"Failed to initialize DB at {db_path}: {e}",
+        ) from e
 
 
 def connect(db_path: Path) -> sqlite3.Connection:
@@ -108,6 +111,6 @@ def db_session(db_path: Path) -> Iterator[sqlite3.Connection]:
             conn.rollback()
         except Exception:
             pass
-        raise DBError(detail=f"DB session failed: {e}") from e
+        raise DBError(code="DB_SESSION_CONNECT_FAILED", detail=f"DB session failed: {e}") from e
     finally:
         conn.close()
