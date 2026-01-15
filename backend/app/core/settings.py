@@ -136,6 +136,7 @@ class Settings(BaseSettings):
         description="SQLite file path for Huey storage. Defaults under data_dir/queue/queue.db",
     )
     huey_fsync: bool = Field(default=False)
+    huey_queue_mode: Literal["huey", "sync"] = "huey"
 
     # ---- Index DB (run history + artifact index) ----
     index_db: Path | None = Field(

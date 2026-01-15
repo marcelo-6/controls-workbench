@@ -130,3 +130,9 @@ class ToolsRegistry:
             list[ToolSpec]: Registered tool specs ordered by insertion.
         """
         return list(self._specs.values())
+
+
+def build_tools_registry() -> ToolsRegistry:
+    reg = ToolsRegistry()
+    # reg.register(... ignition.graph ...)
+    return reg
