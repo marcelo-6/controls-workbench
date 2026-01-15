@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .config import settings
+from .core.settings import settings
 from .storage import ensure_dirs
 
 ensure_dirs()

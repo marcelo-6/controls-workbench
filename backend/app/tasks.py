@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from .api_models import JobStatus, ToolCategory
-from .config import settings
+from .core.settings import settings
 from .ignition.engine import build_graph
 from .ignition.indexing import build_index
 from .ignition.parser import safe_extract_zip

@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from .api_models import APIResponse, LinesPayload
 from .api_response import ok
 from .auth import require_auth
-from .config import settings
+from .core.settings import settings
 from .run_storage import tail_lines
 
 router = APIRouter(prefix="/api/logs", tags=["logs"])
@@ -23,7 +23,11 @@ def _log_path(name: str) -> Path:
 
 
 @router.get("/latest", response_model=APIResponse[LinesPayload])
-def latest(request: Request, name: str = Query(default="api"), user: str = Depends(require_auth)):
+def latest(
+    request: Request,
+    name: str = Query(default="api"),
+    user: str = Depends(require_auth),
+):
     p = _log_path(name)
     lines = tail_lines(p, 1)
     return ok(LinesPayload(lines=lines), request_id=getattr(request.state, "request_id", None))

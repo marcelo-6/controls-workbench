@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from .api_models import APIResponse, LoginRequest, LoginResponse, MeResponse
 from .api_response import ok
-from .config import settings
+from .core.settings import settings
 
 
 def require_auth(request: Request) -> str:

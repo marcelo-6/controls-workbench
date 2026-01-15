@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from .config import settings
+from .core.settings import settings
 
 
 def data_path(*parts: str) -> Path:

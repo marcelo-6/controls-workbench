@@ -8,12 +8,14 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
+from app.api.routes import info
+
 from .api_models import ErrorField
 from .api_response import fail
 
 # Routers
 from .auth import router as auth_router
-from .config import settings
+from .core.settings import settings
 from .index_db import get_index_db
 from .jobs_endpoints import router as jobs_router
 from .jobs_endpoints import runs_router
@@ -25,12 +27,15 @@ from .storage import ensure_dirs
 from .tools_endpoints import ign as ignition_router
 from .tools_endpoints import router as tools_router
 from .uploads_endpoints import router as uploads_router
-from .version import get_backend_version
 
 ensure_dirs()
 api_logger = setup_logger("api", str(Path(settings.data_dir) / "logs" / "api.log"))
 
-app = FastAPI(title="Controls Workbench API", version=get_backend_version())
+app = FastAPI(
+    title=settings.project_name,
+    description=settings.project_description,
+    version=settings.backend_version,
+)
 
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(
@@ -86,6 +91,7 @@ app.include_router(runs_router)
 app.include_router(tools_router)
 app.include_router(ignition_router)
 app.include_router(logs_router)
+app.include_router(info.router, prefix="/api")
 
 
 async def _retention_loop():

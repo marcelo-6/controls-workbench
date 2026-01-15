@@ -9,7 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from .config import settings
+from .core.settings import settings
 
 """SQLite catalog for run history + parsed graph metadata.
 

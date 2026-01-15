@@ -6,7 +6,7 @@ import os
 import shutil
 from logging.handlers import RotatingFileHandler
 
-from .config import settings
+from .core.settings import settings
 
 
 class GZipRotatingFileHandler(RotatingFileHandler):
