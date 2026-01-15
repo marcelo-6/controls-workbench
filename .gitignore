@@ -25,3 +25,4 @@ data/
 example files/
 controls-*.zip
 .vscode
+.coverage

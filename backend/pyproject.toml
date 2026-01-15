@@ -23,6 +23,7 @@ lint = [
 ]
 test = [
     "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
 ]
 
 [tool.uv]
@@ -54,6 +55,64 @@ strict_optional = true
 check_untyped_defs = true
 
 [tool.pytest.ini_options]
+# Test discovery
 pythonpath = ["."]
 testpaths = ["tests"]
-addopts = "-q"
+# addopts = "-q"
+python_files = ["test_*.py"]
+# python_classes = ["Test*"]
+# python_functions = ["test_*"]
+
+# Output formatting and behavior
+addopts = [
+    "-ra",                # show extra test summary info
+    "--strict-markers",   # prevent typos in @pytest.mark
+    "--strict-config",    # ensure config keys are valid
+    "--disable-warnings", # cleaner output
+    "--maxfail=1",        # stop after first failure
+
+    # Coverage
+    "--cov=app",                 # package to measure
+    "--cov-report=term-missing", # show missing lines in terminal
+    # "--cov-report=html",         # generate HTML report in htmlcov/
+    # "--cov-report=xml",          # useful for CI tools
+
+]
+
+# Warning handling
+filterwarnings = [
+    "error::DeprecationWarning",
+    "error::PendingDeprecationWarning",
+    "ignore::UserWarning:pkg_resources",
+]
+
+# Logging (pytest's own log capture)
+log_cli = true
+log_cli_level = "INFO"
+log_format = "%(asctime)s [%(levelname)s] %(message)s"
+log_date_format = "%d-%b-%y %H:%M:%S"
+
+# Markers (must be declared when using --strict-markers)
+markers = [
+    "slow: marks tests as slow",
+    "db: tests that require database access",
+    "integration: integration-level tests",
+    "unit: unit tests",
+]
+
+# exclude test files from coverage
+[tool.coverage.run]
+omit = [
+    "tests/*",
+    "app/core/settings.py",
+    "*/__init__.py",
+]
+
+# enforce min coverage
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+]
+

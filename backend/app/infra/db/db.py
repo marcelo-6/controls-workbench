@@ -41,9 +41,16 @@ def init_db(db_path: Path) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
         schema_sql = _SCHEMA_PATH.read_text(encoding="utf-8")
-        with connect(db_path) as conn:
+        # with connect(db_path) as conn:
+        #     conn.executescript(schema_sql)
+        #     conn.commit()
+        conn = connect(db_path)
+        try:
             conn.executescript(schema_sql)
             conn.commit()
+        finally:
+            conn.close()
+
     except Exception as e:
         raise DBError(detail=f"Failed to initialize DB at {db_path}: {e}") from e
 
