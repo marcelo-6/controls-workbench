@@ -2,8 +2,9 @@
 """
 Queue runner abstraction.
 
-This module provides a single function (`enqueue_job`) used by domain services to
-schedule background work.
+This module provides a small indirection layer so domain services can request
+background work without knowing whether execution is asynchronous (Huey) or
+synchronous (tests/dev).
 
 Why this exists:
 - Production uses Huey `.delay(...)` to enqueue.
@@ -18,33 +19,61 @@ Configuration:
 
 from __future__ import annotations
 
-from app.core.settings import get_settings
+from dataclasses import dataclass
+
+from app.core.settings import Settings
 
 
-def enqueue_job(job_id: str) -> None:
+@dataclass(frozen=True)
+class QueueRunner:
     """
-    Enqueue a job for execution.
+    Queue runner implementation selected by configuration.
+
+    Attributes:
+        mode: Queue mode string ("huey" or "sync").
+    """
+
+    mode: str
+
+    def enqueue_job(self, job_id: str) -> None:
+        """
+        Enqueue a job for execution.
+
+        In "sync" mode, the job executes immediately in-process.
+        In "huey" mode, the job is enqueued for a Huey worker.
+
+        Args:
+            job_id: Job identifier to run.
+
+        Raises:
+            RuntimeError: If the configured queue mode is not recognized.
+        """
+        if self.mode == "sync":
+            from app.infra.queue.tasks import run_job
+
+            run_job(job_id)
+            return
+
+        if self.mode == "huey":
+            from app.infra.queue.tasks import run_job
+
+            run_job.delay(job_id)
+            return
+
+        raise RuntimeError(f"Unknown queue_mode: {self.mode}")
+
+
+def build_queue_runner(settings: Settings) -> QueueRunner:
+    """
+    Build a queue runner from application settings.
+
+    This factory keeps queue configuration and selection logic in one place and
+    enables clean dependency injection into domain services.
 
     Args:
-        job_id: Job identifier to run.
+        settings: Application settings.
 
-    Raises:
-        RuntimeError: If the configured queue mode is not recognized.
+    Returns:
+        QueueRunner: Runner configured for the requested queue mode.
     """
-    s = get_settings()
-
-    if s.huey_queue_mode == "sync":
-        # Sync mode is intentionally a direct call to the Huey task function,
-        # which resolves services and runs the domain logic.
-        from app.infra.queue.tasks import run_job
-
-        run_job(job_id)
-        return
-
-    if s.huey_queue_mode == "huey":
-        from app.infra.queue.tasks import run_job
-
-        run_job.delay(job_id)
-        return
-
-    raise RuntimeError(f"Unknown queue_mode: {s.huey_queue_mode}")
+    return QueueRunner(mode=settings.huey_queue_mode)

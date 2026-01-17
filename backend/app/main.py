@@ -5,25 +5,15 @@ import asyncio
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.api.routes import info
+from app.api.router import build_api_router
 
 # Routers (still old for now - Step 6 will move them)
-from app.auth import router as auth_router
 from app.core.exception_handlers import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestIdMiddleware
 from app.core.responses import ok
 from app.core.settings import settings
 from app.infra.db.db import init_db
-
-# Legacy infra for now (will be migrated in Step 2–4)
-from app.jobs_endpoints import router as jobs_router
-from app.jobs_endpoints import runs_router
-from app.logs_endpoints import router as logs_router
-from app.retention import cleanup_runs, cleanup_uploads
-from app.tools_endpoints import ign as ignition_router
-from app.tools_endpoints import router as tools_router
-from app.uploads_endpoints import router as uploads_router
 
 
 def create_app() -> FastAPI:
@@ -60,6 +50,8 @@ def create_app() -> FastAPI:
     # Exception handlers (uniform API response contract)
     register_exception_handlers(app)
 
+    app.include_router(build_api_router())
+
     # Simple health endpoint (kept stable for docker/ops checks)
     @app.get("/api/health")
     async def health():
@@ -70,16 +62,6 @@ def create_app() -> FastAPI:
             APIResponse[dict]: Always returns success with a small payload.
         """
         return ok({"status": "ok"})
-
-    # Include routers
-    app.include_router(auth_router)
-    app.include_router(uploads_router)
-    app.include_router(jobs_router)
-    app.include_router(runs_router)
-    app.include_router(tools_router)
-    app.include_router(ignition_router)
-    app.include_router(logs_router)
-    app.include_router(info.router, prefix="/api")
 
     async def _retention_loop() -> None:
         """
@@ -93,11 +75,13 @@ def create_app() -> FastAPI:
         """
         while False:  # TODO: enable later (or run on-demand)
             try:
-                del_uploads = cleanup_uploads()
-                run_stats = cleanup_runs()
-                api_logger.info("retention: deleted_uploads=%s stats=%s", del_uploads, run_stats)
-            except Exception as e:
-                api_logger.exception("retention loop error: %s", e)
+                # del_uploads = cleanup_uploads()
+                # run_stats = cleanup_runs()
+                pass
+                # api_logger.info("retention: deleted_uploads=%s stats=%s", del_uploads, run_stats)
+            except Exception:
+                pass
+                # api_logger.exception("retention loop error: %s", e)
             await asyncio.sleep(60 * 60)
 
     @app.on_event("startup")
