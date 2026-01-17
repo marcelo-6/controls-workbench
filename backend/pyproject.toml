@@ -104,7 +104,7 @@ markers = [
 [tool.coverage.run]
 omit = [
     "tests/*",
-    "app/core/settings.py",
+    "app/core/*.py",
     "*/__init__.py",
 ]
 

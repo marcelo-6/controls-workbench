@@ -2,7 +2,7 @@ services:
   api:
     build:
       context: ./backend
-      dockerfile: Dockerfile    
+      dockerfile: Dockerfile
     env_file: .env
     volumes:
       - data:${DATA_DIR}

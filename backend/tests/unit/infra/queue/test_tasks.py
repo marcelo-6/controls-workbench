@@ -30,7 +30,7 @@ def test_run_job_delegates_to_tools_service(monkeypatch) -> None:
     # Patch settings
     monkeypatch.setattr(
         "app.core.settings.get_settings",
-        lambda: SimpleNamespace(db_path=":memory:", index_db=""),
+        lambda: SimpleNamespace(db_path=":memory:", index_db="", huey_db="", huey_fsync=""),
     )
 
     # Patch db_session context manager

@@ -15,9 +15,9 @@ In production, these tasks are executed by the Huey consumer process.
 
 from __future__ import annotations
 
-from app.infra.queue.huey_app import get_huey
+from app.infra.queue.huey_app import huey
 
-huey = get_huey()
+# huey = get_huey()
 
 
 @huey.task()

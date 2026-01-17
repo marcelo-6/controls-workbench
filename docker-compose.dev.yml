@@ -1,3 +1,4 @@
+# docker-compose.dev.yml
 services:
   api:
     build:
@@ -6,6 +7,8 @@ services:
     volumes:
       - ./backend/app:/app/app
       - data:/data
+    environment:
+      - PYTHONPATH=/app
     ports:
       - "8000:8000"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
@@ -19,7 +22,9 @@ services:
       - data:/data
     depends_on:
       - api
-    command: ["huey_consumer.py", "app.queue.huey"]
+    environment:
+      - PYTHONPATH=/app
+    command: ["python", "-m", "huey.bin.huey_consumer", "app.infra.queue.huey_app.huey"]
     # Optional: if you add watchfiles in dev deps, use auto-reload worker:
     # command: ["sh","-c","watchfiles --filter python 'huey_consumer.py app.queue.huey' /app/app"]
 

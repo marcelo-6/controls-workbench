@@ -272,16 +272,19 @@ install-frontend: ## Install frontend deps (pnpm)
 up: ## docker compose up (dev overrides)
 	$(call RUN,up,docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build)
 
-up-backend: ## docker compose up (dev overrides, only backend)
+up-backend: ## docker compose up only backend (dev overrides, only backend)
 	$(call RUN,up,docker compose -f docker-compose.yml -f docker-compose.dev.yml up api worker)
 
-build-all-no-cache: ## docker compose build (dev overrides, no cache)
+build-backend-no-cache: ## docker compose build only backend (dev overrides, no cache)
+	$(call RUN,build,docker compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache api worker)
+
+build-all-no-cache: ## docker compose build all (dev overrides, no cache)
 	$(call RUN,build,docker compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache)
 
-build: ## docker compose build (dev overrides, cache)
-	$(call RUN,build,docker compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache)
+build: ## docker compose build all(dev overrides, cache)
+	$(call RUN,build,docker compose -f docker-compose.yml -f docker-compose.dev.yml build)
 
-build-frontend: ## docker compose build (dev overrides, no cache only for frontend)
+build-frontend: ## docker compose build only frontend(dev overrides, no cache only for frontend)
 	$(call RUN,build,docker compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache frontend)
 
 up-prod: ## docker compose up (prod)
