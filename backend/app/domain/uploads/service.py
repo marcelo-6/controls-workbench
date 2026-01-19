@@ -22,9 +22,13 @@ from uuid import uuid4
 
 from starlette.datastructures import UploadFile
 
+from app.core.logging import get_logger
+from app.core.settings import settings
 from app.core.time import utcnow
 from app.infra.db.repos.uploads import UploadsRepo
 from app.infra.storage.uploads_fs import SavedUpload, save_upload
+
+LOG = get_logger("api", str(settings.logs_dir / "api.log"))
 
 
 @dataclass(frozen=True)
@@ -89,8 +93,11 @@ class UploadsService:
         upload_id = str(uuid4())
         created_at = utcnow()
 
+        LOG.debug(f"[{self.__class__.__name__}] Saving upload to disk")
         saved: SavedUpload = save_upload(upload_id, project_zip, tags_json)
+        LOG.debug(f"[{self.__class__.__name__}] Upload saved to disk")
 
+        LOG.debug(f"[{self.__class__.__name__}] Creating upload metadata in upload registry (db)")
         self._uploads.create(
             upload_id=upload_id,
             created_at=created_at,
@@ -100,6 +107,7 @@ class UploadsService:
             size_bytes=saved.size_bytes,
             sha256=saved.sha256,
         )
+        LOG.debug(f"[{self.__class__.__name__}] Upload metadata created in upload registry (db)")
 
         return UploadCreated(
             upload_id=upload_id,

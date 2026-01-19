@@ -81,22 +81,22 @@ export class ApiClient {
   }
 
   async createJob(toolId: string, uploadId: string, params: Record<string, any> = {}) {
-    return await this.request<{ jobId: string }>("/api/jobs", {
+    return await this.request<{ jobId: string }>("/api/runs", {
       method: "POST",
       body: JSON.stringify({ toolId, uploadId, params })
     });
   }
 
   async getJob(jobId: string) {
-    return await this.request<any>(`/api/jobs/${jobId}`);
+    return await this.request<any>(`/api/runs/${jobId}`);
   }
 
   async getEvents(jobId: string, tail = 500) {
-    return await this.request<any>(`/api/jobs/${jobId}/events?tail=${tail}`);
+    return await this.request<any>(`/api/runs/${jobId}/events?tail=${tail}`);
   }
 
   async listArtifacts(jobId: string) {
-    return await this.request<any>(`/api/jobs/${jobId}/artifacts`);
+    return await this.request<any>(`/api/runs/${jobId}/artifacts`);
   }
 
   async recentRuns(limit = 20) {

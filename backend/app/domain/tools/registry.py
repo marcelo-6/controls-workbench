@@ -135,21 +135,18 @@ class ToolsRegistry:
 def build_tools_registry() -> ToolsRegistry:
     reg = ToolsRegistry()
 
-    try:
-        from app.tools.ignition.project_explorer.service import (
-            run_tool as ignition_project_explorer_runner,
-        )
+    from app.tools.ignition.project_explorer.service import (
+        run_tool as ignition_project_explorer_runner,
+    )
 
-        reg.register(
-            spec=ToolSpec(
-                tool_id="ignition.project.explorer",
-                name="Ignition Project Explorer",
-                description="Parse an Ignition Designer project export ZIP and build a dependency graph.",
-            ),
-            runner=ignition_project_explorer_runner(),
-        )
-    except Exception as exc:
-        print(f"{str(exc)}")
+    reg.register(
+        spec=ToolSpec(
+            tool_id="ignition.project.explorer",
+            name="Ignition Project Explorer",
+            description="Parse an Ignition Designer project export ZIP and build a dependency graph.",
+        ),
+        runner=ignition_project_explorer_runner,
+    )
 
     # reg.register(... ignition.graph ...)
     return reg

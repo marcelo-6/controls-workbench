@@ -2,83 +2,48 @@
 """
 Ignition Project Explorer tool engine.
 
-This module is the orchestration layer for the Ignition Project Explorer tool.
-It is responsible for:
+Orchestrates:
+- open ZIP
+- parse export
+- build GraphBundle + node payload artifacts
+- emit events + write artifacts via ToolContext
 
-- Opening the uploaded project export ZIP
-- Parsing resources via `parser.py`
-- Building the GraphBundle contract via `indexing.py`
-- Emitting events and writing artifacts through the provided ToolContext
-
-The engine intentionally does NOT:
-- import FastAPI
-- directly persist to the database
-- assume any specific job storage layout
-
-All persistence occurs via ToolContext callbacks implemented by your tool runner
-service (which can index artifacts in DB and write bytes to the filesystem).
+This module is HTTP/DB independent. Persistence is delegated through ToolContext.
 """
 
 from __future__ import annotations
 
+import json
 import zipfile
 from typing import Any
 
 from app.core.errors import BadRequestError
+from app.domain.tools.registry import ToolContext
 
-from .indexing import (
-    build_graph_bundle,
-)
+from .indexing import build_graph_bundle
 from .parser import parse_project_export
 
 
-class ToolContextProto:
-    """
-    Minimal ToolContext protocol used by this tool.
-
-    Your actual ToolContext can be richer; the engine only relies on:
-    - emit_event(level, message, kind?, payload?)
-    - write_artifact(kind, rel_path, bytes, content_type, meta?)
-    """
-
-    def emit_event(
-        self,
-        *,
-        level: str,
-        message: str,
-        kind: str | None = None,
-        payload: dict[str, Any] | None = None,
-    ) -> None:  # noqa: D401
-        ...
-
-    def write_artifact(
-        self,
-        *,
-        kind: str,
-        rel_path: str,
-        content_type: str,
-        bytes_: bytes,
-        meta: dict[str, Any] | None = None,
-    ) -> None: ...
-
-
 def run(
-    ctx: ToolContextProto,
+    ctx: ToolContext,
     *,
     project_zip_path: str,
+    tags_json_path: str | None = None,
     params: dict[str, Any] | None = None,
 ) -> None:
     """
     Run the Ignition Project Explorer tool.
 
     Args:
-        ctx: ToolContext implementation provided by the domain tool runner.
-        project_zip_path: Filesystem path to the uploaded Designer project export ZIP.
-        params: Optional tool parameters (may include a selected profile).
+        ctx: Tool execution context (events + artifact writes).
+        project_zip_path: Path to the uploaded Designer project export ZIP.
+        tags_json_path: Optional path to a tags export JSON (future; ignored in v1).
+        params: Optional tool parameters.
 
     Raises:
         BadRequestError: If the ZIP cannot be opened or parsed.
     """
+    _ = tags_json_path  # v1: reserved for future
     params = params or {}
     profile = params.get("profile") if isinstance(params.get("profile"), dict) else {}
 
@@ -95,7 +60,11 @@ def run(
                 payload={"resources": len(export.resources)},
             )
 
-            bundle, artifacts = build_graph_bundle(zip_file=zf, export=export, profile=profile)
+            bundle, node_artifacts = build_graph_bundle(
+                zip_file=zf,
+                export=export,
+                profile=profile,
+            )
 
     except zipfile.BadZipFile as e:
         raise BadRequestError(code="bad_zip", detail=f"Invalid ZIP file: {e}") from e
@@ -104,25 +73,23 @@ def run(
             code="parse_failed", detail=f"Failed to parse project export: {e}"
         ) from e
 
-    # Write primary artifacts (graphs + tree + summary)
+    # Top-level artifacts
     ctx.emit_event(level="info", message="Writing graph artifacts", kind="artifact")
 
-    _write_json_artifact(
+    _write_json(
         ctx,
         kind="graph_full",
         rel_path="graph_full.json",
         obj=bundle.graph_full.model_dump(mode="json"),
     )
-    _write_json_artifact(
+    _write_json(
         ctx,
         kind="graph_ui",
         rel_path="graph_ui.json",
         obj=bundle.graph_ui.model_dump(mode="json"),
     )
-    _write_json_artifact(
-        ctx, kind="tree", rel_path="tree.json", obj=bundle.tree.model_dump(mode="json")
-    )
-    _write_json_artifact(
+    _write_json(ctx, kind="tree", rel_path="tree.json", obj=bundle.tree.model_dump(mode="json"))
+    _write_json(
         ctx,
         kind="summary",
         rel_path="summary.json",
@@ -132,24 +99,26 @@ def run(
         ),
     )
 
-    # Write per-node artifacts
+    # Per-node payload artifacts (thumbnail, view.json, code.py, query.sql, resource.json, config.json)
     ctx.emit_event(
         level="info",
-        message=f"Writing node payload artifacts: {len(artifacts)}",
+        message=f"Writing node payload artifacts: {len(node_artifacts)}",
         kind="artifact",
+        payload={"count": len(node_artifacts)},
     )
-    for a in artifacts:
+
+    for a in node_artifacts:
         ctx.write_artifact(
             kind=a.kind,
             rel_path=a.rel_path,
             content_type=a.content_type,
-            bytes_=a.bytes_,
+            data=a.bytes_,
             meta=a.meta,
         )
 
     ctx.emit_event(
         level="info",
-        message="Ignition graph build complete",
+        message="Ignition project explorer complete",
         kind="tool",
         payload={
             "nodes_full": bundle.stats.get("nodes_full"),
@@ -160,14 +129,12 @@ def run(
     )
 
 
-def _write_json_artifact(ctx: ToolContextProto, *, kind: str, rel_path: str, obj: Any) -> None:
-    import json
-
+def _write_json(ctx: ToolContext, *, kind: str, rel_path: str, obj: Any) -> None:
     raw = json.dumps(obj, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
     ctx.write_artifact(
         kind=kind,
         rel_path=rel_path,
         content_type="application/json",
-        bytes_=raw,
+        data=raw,
         meta={"kind": kind},
     )

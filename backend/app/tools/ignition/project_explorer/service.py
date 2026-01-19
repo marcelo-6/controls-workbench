@@ -2,34 +2,39 @@
 """
 Ignition Project Explorer tool runner entrypoint.
 
-This module provides the callable used by the tools registry. It adapts from the
-generic tool runner interface (ToolContext + inputs + params) into the Ignition
-Project Explorer engine.
+This module exports the registry-facing runner callable (`run_tool`) that conforms
+to the platform ToolRunner contract: Callable[[ToolContext], None].
 
-Expected integration pattern:
-- Domain ToolsService resolves upload paths and constructs a ToolContext that can:
-  - emit DB-backed events
-  - write artifacts to filesystem + index them in DB
-- Tools registry maps tool_id "ignition.graph" to this `run_tool(...)` function.
+The runner adapts the platform ToolContext into the tool engine inputs by
+retrieving uploaded artifact paths via ToolContext methods.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from app.domain.tools.registry import ToolContext
+
 from .engine import run as run_engine
 
 
-def run_tool(ctx: Any, *, project_zip_path: str, params: dict[str, Any] | None = None) -> None:
+def run_tool(ctx: ToolContext) -> None:
     """
-    Registry-facing tool runner.
+    Execute the Ignition Project Explorer tool.
 
     Args:
-        ctx: ToolContext implementation from the domain tool runner.
-        project_zip_path: Path to the uploaded project ZIP (Designer export).
-        params: Optional params_json decoded to dict.
-
-    Returns:
-        None
+        ctx: Platform tool context. Provides access to the uploaded ZIP path and
+            artifact/event callbacks.
     """
-    run_engine(ctx, project_zip_path=project_zip_path, params=params or {})
+    project_zip_path = ctx.get_project_zip_path()
+    tags_json_path = ctx.get_tags_json_path()
+
+    # If later you add profile selection into ctx, you can pass it here.
+    params: dict[str, Any] = {}
+
+    run_engine(
+        ctx,
+        project_zip_path=project_zip_path,
+        tags_json_path=tags_json_path,
+        params=params,
+    )

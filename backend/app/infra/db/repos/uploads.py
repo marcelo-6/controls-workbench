@@ -20,6 +20,10 @@ import sqlite3
 from typing import Any
 
 from app.core.errors import DBError
+from app.core.logging import get_logger
+from app.core.settings import settings
+
+LOG = get_logger("api", str(settings.logs_dir / "api.log"))
 
 
 class UploadsRepo:
@@ -43,6 +47,7 @@ class UploadsRepo:
     ) -> None:
         """Insert a new upload row."""
         try:
+            LOG.debug(f"[{self.__class__.__name__}] Inserting upload metadata (db)")
             self._conn.execute(
                 """
                 INSERT INTO uploads (
@@ -64,6 +69,7 @@ class UploadsRepo:
                     meta_json,
                 ),
             )
+            LOG.debug(f"[{self.__class__.__name__}] Inserted upload metadata (db)")
         except Exception as e:
             raise DBError(
                 code="DB_INSERT_UPLOAD_FAILED",
