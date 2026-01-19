@@ -42,7 +42,7 @@ def login(
         AuthError: If the password is incorrect.
     """
     if body.password != settings.app_password:
-        raise AuthError(detail="Invalid password")
+        raise AuthError(code="INVALID_PASSWORD", detail="Invalid password")
 
     request.session["authed"] = True
     return ok(AuthState(authed=True))

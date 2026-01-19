@@ -33,7 +33,7 @@ def tail_api_log(
     Returns:
         APIResponse[dict]: `{ "lines": [..] }`
     """
-    log_path = logs_root / "api.log"
+    log_path = logs_root() / "api.log"
     if not log_path.exists():
         return ok({"lines": []})
 

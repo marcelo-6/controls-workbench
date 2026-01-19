@@ -73,7 +73,7 @@ def connect(db_path: Path) -> sqlite3.Connection:
     Returns:
         sqlite3.Connection: An open sqlite connection.
     """
-    conn = sqlite3.connect(str(db_path), timeout=30)
+    conn = sqlite3.connect(str(db_path), timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
 
     # Keep pragmas close to the connection boundary.

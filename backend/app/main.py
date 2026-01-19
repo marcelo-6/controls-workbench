@@ -97,7 +97,7 @@ def create_app() -> FastAPI:
         """
         api_logger.info("API startup")
         try:
-            init_db(settings.db_path)
+            init_db(settings.index_db)
         except Exception as e:
             api_logger.exception("DB init failed: %s", e)
 

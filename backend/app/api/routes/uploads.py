@@ -36,4 +36,5 @@ def create_upload(
         APIResponse[UploadCreated]: Created upload identifier.
     """
     upload_id = svc.create_upload(project_zip=project_zip, tags_json=tags_json)
+
     return ok(UploadCreated(uploadId=upload_id))
