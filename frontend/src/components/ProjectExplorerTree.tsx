@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Collapse,
@@ -89,7 +89,7 @@ export default function ProjectExplorerTree({ tree, selectedId, onSelect }: Prop
   const [expanded, setExpanded] = useState<Set<string>>(defaultExpanded);
 
   // If the filter changes a lot, keep expanded sane by ensuring root/categories are open
-  React.useEffect(() => {
+  useEffect(() => {
     setExpanded((prev) => {
       const next = new Set(prev);
       next.add(filteredTree.id);

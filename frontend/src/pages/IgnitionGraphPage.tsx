@@ -22,7 +22,7 @@ import {
   Tooltip,
 } from "@mui/material";
 import { styled } from "@mui/material/styles";
-
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -138,111 +138,98 @@ export default function IgnitionGraphPage() {
     };
 
     const tick = async () => {
-      try {
-        console.debug(
-          `%c[TICK] job=${selectedJobId}`,
-          "color:#9c27b0;font-weight:bold"
-        );
+      console.debug(
+        `%c[TICK] job=${selectedJobId}`,
+        "color:#9c27b0;font-weight:bold"
+      );
 
-        const st = await api.getJob(selectedJobId);
-        console.debug("[TICK] job status:", st);
+      // IgnitionGraphPage.tsx (inside tick())
 
-        const terminal = st.status === "success" || st.status === "failed";
-        const done = !!st.artifactsReady && terminal;
+      const st = await api.getJob(selectedJobId);
+      if (!cancelled) setJob(st); // ✅ critical fix
 
-        console.debug("[TICK] terminal=", terminal, "done=", done);
-
-        // Poll events
-        if (!terminal || !eventsFinalLoadedRef.current) {
-          console.debug("[TICK] polling events…");
-          const ev = await api.getEvents(selectedJobId, 2000);
-          console.debug("[TICK] events:", ev);
-          if (!cancelled) setLines(ev.lines || []);
-          if (terminal) eventsFinalLoadedRef.current = true;
-        }
-
-        if (!done) {
-          console.debug("[TICK] not done yet, waiting for artifacts…");
-          return;
-        }
-
-        // Tree load
-        console.debug("[TICK] tree state:", {
-          treeLoaded: treeLoadedRef.current,
-          inFlight: treeLoadInFlightRef.current,
-          treeNotFound: treeNotFoundRef.current
-        });
-
-        if (st.status === "success" && !treeLoadedRef.current && !treeLoadInFlightRef.current) {
-          console.debug("[TICK] loading tree…");
-          treeLoadInFlightRef.current = true;
-          setTreeLoading(true);
-
-          try {
-            const t = await api.getTree(selectedJobId);
-            console.debug("[TICK] tree response:", t);
-            if (!cancelled) setTree(t);
-            treeLoadedRef.current = true;
-          } catch (e) {
-            console.error("[TICK] tree load error:", e);
-            const msg = e.message || "Failed to load tree";
-            if (!cancelled) setTreeError(msg);
-            if (String(msg).toLowerCase().includes("tree not found")) {
-              treeNotFoundRef.current = true;
-            }
-          } finally {
-            treeLoadInFlightRef.current = false;
-            if (!cancelled) setTreeLoading(false);
-          }
-        }
-
-        // Fallback
-        console.debug("[TICK] fallback check:", {
-          treeNotFound: treeNotFoundRef.current,
-          fallbackLoaded: graphFallbackLoadedRef.current
-        });
-
-        if (st.status === "success" && treeNotFoundRef.current && !graphFallbackLoadedRef.current) {
-          console.debug("[TICK] loading fallback graph…");
-          graphFallbackLoadedRef.current = true;
-          try {
-            const g = await api.getGraph(selectedJobId);
-            console.debug("[TICK] fallback graph:", g);
-            if (!cancelled) setGraph(g.graph);
-          } catch (e) {
-            console.error("[TICK] fallback graph error:", e);
-          }
-        }
-
-        // Summary
-        if (!summaryLoadedRef.current) {
-          console.debug("[TICK] loading summary…");
-          summaryLoadedRef.current = true;
-          try {
-            const s = await api.getSummary(selectedJobId);
-            console.debug("[TICK] summary:", s);
-            if (!cancelled) setSummary(s.markdown || "");
-          } catch (e) {
-            console.error("[TICK] summary error:", e);
-          }
-        }
-
-        // Stop polling
-        const treeAttempted = treeLoadedRef.current || treeNotFoundRef.current;
-        const fallbackOk = !treeNotFoundRef.current || graphFallbackLoadedRef.current;
-
-        console.debug("[TICK] stopPolling check:", { treeAttempted, fallbackOk });
-        console.debug("[TICK] flags:", {
-          treeLoaded: treeLoadedRef.current,
-          treeNotFound: treeNotFoundRef.current,
-          tree,
-          treeError
-        });
-        
-        if (treeAttempted && fallbackOk) stopPolling();
-      } catch (err) {
-        console.error("[TICK] unexpected error:", err);
+      const terminal = st.status === "success" || st.status === "failed";
+      if (st.status === "success" && !treeLoadedRef.current && !treeNotFoundRef.current) {
+        treeLoadInFlightRef.current = false;
       }
+      if (st.status === "success" && !graphFallbackLoadedRef.current) {
+        graphFallbackLoadedRef.current = false;
+      }
+      const done = !!st.artifactsReady && terminal;
+
+      // Poll events (keep as-is)
+      if (!terminal || !eventsFinalLoadedRef.current) {
+        const ev = await api.getEvents(selectedJobId, 2000);
+        if (!cancelled) setLines(ev.lines || []);
+        if (terminal) eventsFinalLoadedRef.current = true;
+      }
+
+      if (!done) return;
+      console.log("TREE FLAGS:", {
+        treeLoaded: treeLoadedRef.current,
+        inFlight: treeLoadInFlightRef.current,
+        tree: tree
+      });      
+      // ---- Load tree artifact (only on success)
+      if (st.status === "success" && !treeLoadedRef.current && !treeLoadInFlightRef.current) {
+        treeLoadInFlightRef.current = true;
+        setTreeLoading(true);
+
+        try {
+          // ✅ new: artifact-based tree
+          const t = await api.getArtifactJson(selectedJobId, "tree");
+          console.debug("[TICK] t.data:", t.data);
+          if (!cancelled) setTree(t.data);
+          treeLoadedRef.current = true;
+        } catch (e: any) {
+          const msg = e?.message || "Failed to load tree";
+          if (!cancelled) setTreeError(msg);
+          if (String(msg).toLowerCase().includes("not found")) {
+            treeNotFoundRef.current = true;
+          }
+        } finally {
+          treeLoadInFlightRef.current = false;
+          if (!cancelled) setTreeLoading(false);
+        }
+        console.log("TREE LOADER SHOULD RUN?", {
+        status: st.status,
+        treeLoaded: treeLoadedRef.current,
+        inFlight: treeLoadInFlightRef.current
+      });
+
+      }
+
+      // ---- Load default UI graph (fast initial render)
+      if (st.status === "success" && !graph && !graphFallbackLoadedRef.current) {
+        graphFallbackLoadedRef.current = true;
+        try {
+          // ✅ new: artifact-based graph (ui filtered)
+          const g = await api.getArtifactJson(selectedJobId, "graph_ui");
+          console.debug("[TICK] g.data:", g.data);
+          if (!cancelled) setGraph(g.data);
+        } catch (e) {
+          // keep quiet; user can still click nodes to load slices later
+          console.error("[TICK] graph_ui load error:", e);
+        }
+      }
+
+      // ---- Optional: summary artifact (if you generate it)
+      if (!summaryLoadedRef.current) {
+        summaryLoadedRef.current = true;
+        try {
+          // const s = await api.getArtifactText(selectedJobId, "summary");
+          const s = "pass for now";
+          if (!cancelled) setSummary(s || "");
+        } catch (e) {
+          // fine if missing
+        }
+      }
+
+      // Stop polling once we’ve attempted primary artifacts
+      const treeAttempted = treeLoadedRef.current || treeNotFoundRef.current;
+      const graphAttempted = !!graph || graphFallbackLoadedRef.current;
+      if (treeAttempted && graphAttempted) stopPolling();
+
     };
 
     tick();
@@ -262,6 +249,13 @@ export default function IgnitionGraphPage() {
       enqueueSnackbar("Job created", { variant: "success" });
 
       setSelectedJobId(jobRes.jobId);
+      // RESET ALL LOADER REFS
+      treeLoadedRef.current = false;
+      treeLoadInFlightRef.current = false;
+      treeNotFoundRef.current = false;
+      graphFallbackLoadedRef.current = false;
+      eventsFinalLoadedRef.current = false;
+
       setSidebarOpen(false); // ✅ auto-collapse after starting
 
       setGraph(null);
@@ -303,22 +297,17 @@ export default function IgnitionGraphPage() {
   };
 
   const loadSubgraph = async (rootId: string) => {
-    if (!selectedJobId) return;
     setSelectedRootId(rootId);
-    setSubgraphLoading(true);
-    try {
-      const res = await api.getSubgraph(selectedJobId, {
-        rootIds: [rootId],
-        depth,
-        direction,
-        maxNodes: 1200,
-      });
-      setGraph(res.graph);
-      enqueueSnackbar(`Loaded ${res.graph?.meta?.stats?.nodes || ""} nodes`, { variant: "success" });
-    } catch (e: any) {
-      enqueueSnackbar(e.message || "Failed to load subgraph", { variant: "error" });
-    } finally {
-      setSubgraphLoading(false);
+
+    // If you already have a graph loaded, just keep it for now.
+    // Later we’ll swap this to server-side slicing.
+    if (!graph) {
+      try {
+        const g = await api.getArtifactJson(selectedJobId!, "graph_ui");
+        setGraph(g);
+      } catch (e) {
+        enqueueSnackbar("No graph available yet", { variant: "warning" });
+      }
     }
   };
 
@@ -403,28 +392,119 @@ export default function IgnitionGraphPage() {
                 <Divider />
                 <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
                   <List dense disablePadding sx={{ minHeight: 0 }}>
-                    {recent.map((r) => (
-                      <ListItemButton
-                        key={r.jobId}
-                        selected={selectedJobId === r.jobId}
-                        onClick={() => {
-                          setSelectedJobId(r.jobId);
-                          setSidebarOpen(false); // ✅ auto-collapse after selecting
+                    {recent.map((r) => {
+                      const statusColor =
+                        r.status === "success" ? "success" :
+                        r.status === "error"   ? "error"   :
+                        r.status === "running" ? "info"    :
+                        r.status === "queued"  ? "warning" :
+                        "default";
 
-                          setGraph(null);
-                          setReport(null);
-                          setSummary("");
-                          setTree(null);
-                          setTreeError("");
-                          setSelectedRootId(null);
-                        }}
-                      >
-                        <ListItemText
-                          primary={r.jobId}
-                          secondary={`${r.toolId} • ${new Date(r.createdAt).toLocaleString()}`}
-                        />
-                      </ListItemButton>
-                    ))}
+                      // Shorten jobId: first 4 chars + last 4 chars
+                      const shortId = `${r.jobId.slice(0, 4)}…${r.jobId.slice(-4)}`;
+
+                      const formattedTime = new Date(r.createdAt)
+                        .toLocaleString("en-GB", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          second: "2-digit",
+                          hour12: false
+                        })
+                        .replace(/ /g, "-")
+                        .replace(",", "");
+
+                      return (
+                        <ListItemButton
+                          key={r.jobId}
+                          selected={selectedJobId === r.jobId}
+                          onClick={() => {
+                            setSelectedJobId(r.jobId);
+                            setSidebarOpen(false);
+
+                            setGraph(null);
+                            setReport(null);
+                            setSummary("");
+                            setTree(null);
+                            setTreeError("");
+                            setSelectedRootId(null);
+                          }}
+                          sx={{
+                            py: 0.5,
+                            px: 1,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 1,
+                          }}
+                        >
+                          <ListItemText
+                            primary={
+                              <Stack direction="row" alignItems="center" spacing={1}>
+                                {/* Clickable short jobId */}
+                                <Typography
+                                  variant="body2"
+                                  sx={{
+                                    fontFamily: "monospace",
+                                    cursor: "pointer",
+                                    textDecoration: "underline",
+                                    textUnderlineOffset: 3,
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedJobId(r.jobId);
+                                  }}
+                                >
+                                  {shortId}
+                                </Typography>
+
+                                {/* Status chip */}
+                                <Chip
+                                  label={r.status}
+                                  size="small"
+                                  color={statusColor}
+                                  sx={{ textTransform: "capitalize" }}
+                                />
+
+                                {/* Timestamp */}
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ fontFamily: "monospace" }}
+                                >
+                                  {formattedTime}
+                                </Typography>
+                              </Stack>
+                            }
+                            secondary={
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ fontFamily: "monospace" }}
+                              >
+                                {r.toolId}
+                              </Typography>
+                            }
+                          />
+
+                          {/* Copy button */}
+                          <Tooltip title="Copy job ID">
+                            <IconButton
+                              size="small"
+                              edge="end"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigator.clipboard.writeText(r.jobId);
+                                enqueueSnackbar("Copied job ID", { variant: "success" });
+                              }}
+                            >
+                              <ContentCopyIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </ListItemButton>
+                      );
+                    })}
                     {!recent.length && (
                       <Box sx={{ p: 2 }}>
                         <Typography variant="body2" color="text.secondary">

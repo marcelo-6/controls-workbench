@@ -165,7 +165,40 @@ async request<T>(path: string, init?: RequestInit): Promise<T> {
   async getSummary(jobId: string) {
     return await this.request<any>(`/api/runs/${jobId}/artifacts/summary`);
   }
+  
+  // ---------------- Artifact helpers (raw fetch) ----------------
 
+  private artifactUrl(jobId: string, kind: string) {
+    return `/api/runs/${encodeURIComponent(jobId)}/artifacts/${encodeURIComponent(kind)}`;
+  }
+
+  private async fetchOrThrow(res: Response) {
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      const msg = text || `${res.status} ${res.statusText}`;
+      throw new Error(msg);
+    }
+    return res;
+  }
+
+  async getArtifactJson(jobId: string, kind: string) {
+    const res = await fetch(this.artifactUrl(jobId, kind), { credentials: "include" });
+    await this.fetchOrThrow(res);
+    return res.json();
+  }
+
+  async getArtifactText(jobId: string, kind: string) {
+    const res = await fetch(this.artifactUrl(jobId, kind), { credentials: "include" });
+    await this.fetchOrThrow(res);
+    return res.text();
+  }
+
+  async getArtifactBlob(jobId: string, kind: string) {
+    const res = await fetch(this.artifactUrl(jobId, kind), { credentials: "include" });
+    await this.fetchOrThrow(res);
+    return res.blob();
+  }
+  
   // ---------------- Ignition (indexed) ----------------
 
   async getTree(jobId: string) {
