@@ -40,7 +40,7 @@ import { api } from "../api/client";
 import GraphView from "../components/GraphView";
 import ProjectExplorerTree from "../components/ProjectExplorerTree";
 import { useOutput } from "../state/output";
-
+// @refresh reset
 type JobStatus = "queued" | "running" | "success" | "failed";
 
 const drawerWidth = 360;
@@ -86,6 +86,9 @@ export default function IgnitionGraphPage() {
   const [direction, setDirection] = useState<"both" | "in" | "out">("both");
   const [subgraphLoading, setSubgraphLoading] = useState(false);
 
+  const [treeAttempted, setTreeAttempted] = useState(false);
+  const [graphAttempted, setGraphAttempted] = useState(false);
+
   // Avoid restarting polling effects when state updates (which can cancel in-flight loads).
   // We use refs to track whether we've already loaded optional artifacts.
   const treeLoadInFlightRef = useRef(false);
@@ -97,6 +100,10 @@ export default function IgnitionGraphPage() {
   const pollTimerRef = useRef<number | null>(null);
   const eventsFinalLoadedRef = useRef(false);
 
+  useEffect(() => {
+    console.log("IGNITION GRAPH PAGE MOUNTED");
+    return () => console.log("IGNITION GRAPH PAGE UNMOUNTED");
+  }, []);
   // Reset per-run load flags when switching jobs.
   useEffect(() => {
     treeLoadInFlightRef.current = false;
@@ -119,6 +126,18 @@ export default function IgnitionGraphPage() {
     }
   };
 
+  const stopPolling = () => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  };
+
+  console.log("RENDER tree:", tree);
+  console.log("RENDER graph:", graph);
+  console.log("RENDER job:", job?.status);
+  console.log("RENDER treeError:", treeError);
+
   useEffect(() => {
     refreshRecent();
   }, []);
@@ -128,117 +147,82 @@ export default function IgnitionGraphPage() {
     if (!selectedJobId) return;
 
     let cancelled = false;
-    setCurrentJobId(selectedJobId);
 
-    const stopPolling = () => {
-      if (pollTimerRef.current !== null) {
-        clearInterval(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-    };
+    console.debug("%c[Polling started]", "color:#4caf50;font-weight:bold");
 
     const tick = async () => {
-      console.debug(
-        `%c[TICK] job=${selectedJobId}`,
-        "color:#9c27b0;font-weight:bold"
-      );
+      if (cancelled) return;
 
-      // IgnitionGraphPage.tsx (inside tick())
+      console.debug("%c[TICK]", "color:#9c27b0;font-weight:bold");
 
-      const st = await api.getJob(selectedJobId);
-      if (!cancelled) setJob(st); // ✅ critical fix
+      // 1. Load job
+      let st;
+      try {
+        st = await api.getJob(selectedJobId);
+        if (!cancelled) setJob(st);
+      } catch (e) {
+        console.error("Failed to load job:", e);
+        return;
+      }
 
       const terminal = st.status === "success" || st.status === "failed";
-      if (st.status === "success" && !treeLoadedRef.current && !treeNotFoundRef.current) {
-        treeLoadInFlightRef.current = false;
-      }
-      if (st.status === "success" && !graphFallbackLoadedRef.current) {
-        graphFallbackLoadedRef.current = false;
-      }
-      const done = !!st.artifactsReady && terminal;
 
-      // Poll events (keep as-is)
-      if (!terminal || !eventsFinalLoadedRef.current) {
+      // 2. Always poll events until terminal
+      try {
         const ev = await api.getEvents(selectedJobId, 2000);
         if (!cancelled) setLines(ev.lines || []);
-        if (terminal) eventsFinalLoadedRef.current = true;
+      } catch (e) {
+        console.error("Failed to load events:", e);
       }
 
-      if (!done) return;
-      console.log("TREE FLAGS:", {
-        treeLoaded: treeLoadedRef.current,
-        inFlight: treeLoadInFlightRef.current,
-        tree: tree
-      });      
-      // ---- Load tree artifact (only on success)
-      if (st.status === "success" && !treeLoadedRef.current && !treeLoadInFlightRef.current) {
-        treeLoadInFlightRef.current = true;
-        setTreeLoading(true);
+      if (!terminal) return;
 
+      // 3. Load TREE exactly once
+      if (!treeAttempted) {
+        setTreeAttempted(true);
         try {
-          // ✅ new: artifact-based tree
           const t = await api.getArtifactJson(selectedJobId, "tree");
-          console.debug("[TICK] t.data:", t.data);
+          console.debug("[TICK] tree:", t.data);
           if (!cancelled) setTree(t.data);
-          treeLoadedRef.current = true;
         } catch (e: any) {
-          const msg = e?.message || "Failed to load tree";
-          if (!cancelled) setTreeError(msg);
-          if (String(msg).toLowerCase().includes("not found")) {
-            treeNotFoundRef.current = true;
-          }
-        } finally {
-          treeLoadInFlightRef.current = false;
-          if (!cancelled) setTreeLoading(false);
+          console.error("Tree load error:", e);
+          if (!cancelled) setTreeError(e.message || "Failed to load tree");
         }
-        console.log("TREE LOADER SHOULD RUN?", {
-        status: st.status,
-        treeLoaded: treeLoadedRef.current,
-        inFlight: treeLoadInFlightRef.current
-      });
-
       }
 
-      // ---- Load default UI graph (fast initial render)
-      if (st.status === "success" && !graph && !graphFallbackLoadedRef.current) {
-        graphFallbackLoadedRef.current = true;
+      // 4. Load GRAPH exactly once
+      if (!graphAttempted) {
+        setGraphAttempted(true);
         try {
-          // ✅ new: artifact-based graph (ui filtered)
           const g = await api.getArtifactJson(selectedJobId, "graph_ui");
-          console.debug("[TICK] g.data:", g.data);
+          console.debug("[TICK] graph:", g.data);
           if (!cancelled) setGraph(g.data);
         } catch (e) {
-          // keep quiet; user can still click nodes to load slices later
-          console.error("[TICK] graph_ui load error:", e);
+          console.error("Graph load error:", e);
         }
       }
 
-      // ---- Optional: summary artifact (if you generate it)
-      if (!summaryLoadedRef.current) {
-        summaryLoadedRef.current = true;
-        try {
-          // const s = await api.getArtifactText(selectedJobId, "summary");
-          const s = "pass for now";
-          if (!cancelled) setSummary(s || "");
-        } catch (e) {
-          // fine if missing
-        }
+      // 5. Stop polling once both attempts are done
+      if (treeAttempted && graphAttempted) {
+        console.debug("%c[Polling stopped]", "color:#f44336;font-weight:bold");
+        stopPolling();
       }
-
-      // Stop polling once we’ve attempted primary artifacts
-      const treeAttempted = treeLoadedRef.current || treeNotFoundRef.current;
-      const graphAttempted = !!graph || graphFallbackLoadedRef.current;
-      if (treeAttempted && graphAttempted) stopPolling();
-
     };
 
+    // Run immediately
     tick();
-    pollTimerRef.current = window.setInterval(tick, 1500);
+
+    // Start interval
+    pollTimerRef.current = window.setInterval(() => {
+      tick();
+    }, 1500);
+
+    // Cleanup
     return () => {
       cancelled = true;
       stopPolling();
     };
-  }, [selectedJobId, setCurrentJobId, setLines]);
+  }, [selectedJobId, treeAttempted, graphAttempted]);
 
   const submit = async () => {
     if (!projectZip) return;
@@ -264,6 +248,10 @@ export default function IgnitionGraphPage() {
       setTree(null);
       setTreeError("");
       setSelectedRootId(null);
+
+      setTreeAttempted(false);
+      setGraphAttempted(false);
+
 
       await refreshRecent();
     } catch (e: any) {
@@ -636,8 +624,10 @@ export default function IgnitionGraphPage() {
               <Box sx={{ p: 2 }}>
                 <Typography variant="body2" color="text.secondary">
                   {job && job.status === "success" && treeError
-                    ? `Explorer not available: ${treeError}`
-                    : "Waiting for artifacts..."}
+                      ? `Explorer not available: ${treeError}`
+                      : tree
+                        ? "Explorer loaded"
+                        : "Waiting for artifacts..."}
                 </Typography>
               </Box>
             )}
