@@ -133,7 +133,7 @@ def get_queue_runner(settings: Annotated[Settings, Depends(get_settings)]):
     Returns:
         Queue runner instance compatible with `enqueue_job(job_id)`.
     """
-    return build_queue_runner(settings)  # TODO what is this for?
+    return build_queue_runner(settings)
 
 
 def get_uploads_service(
@@ -165,7 +165,7 @@ def get_jobs_service(
         jobs_repo=repos.jobs,
         events_repo=repos.events,
         artifacts_repo=repos.artifacts,
-        enqueue=enqueue,
+        enqueue=enqueue.enqueue_job,
     )
 
 

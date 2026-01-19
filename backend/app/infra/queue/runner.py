@@ -57,7 +57,7 @@ class QueueRunner:
         if self.mode == "huey":
             from app.infra.queue.tasks import run_job
 
-            run_job.delay(job_id)
+            run_job(job_id)  # TODO use huey.enqueue?? dont fully understand this implementation
             return
 
         raise RuntimeError(f"Unknown queue_mode: {self.mode}")

@@ -50,3 +50,7 @@ def get_huey() -> SqliteHuey:
 
 # IMPORTANT: Huey consumer imports this symbol by dotted path.
 huey: SqliteHuey = get_huey()
+
+# Import tasks so decorators execute and tasks are registered in Huey's registry.
+# noqa avoids "imported but unused" noise.
+from app.infra.queue import tasks as _tasks  # noqa: F401,E402

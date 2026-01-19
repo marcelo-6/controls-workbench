@@ -124,7 +124,9 @@ class JobsService:
             params_json=params_json,
         )
 
-        self._events.append(job_id=job_id, level="info", message="Job created", kind="lifecycle")
+        self._events.append(
+            job_id=job_id, ts=now, level="info", message="Job created", kind="lifecycle"
+        )
 
         self._enqueue(job_id)
         return JobCreated(

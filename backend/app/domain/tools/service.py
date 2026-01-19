@@ -20,51 +20,17 @@ This is the replacement for older "tasks.py" job logic.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any
 
 from app.core.errors import BadRequestError, NotFoundError
 from app.core.time import utcnow_iso
-from app.domain.tools.registry import ToolsRegistry
+from app.domain.tools.registry import ToolContext, ToolsRegistry
 from app.infra.db.repos.artifacts import ArtifactsRepo
 from app.infra.db.repos.events import EventsRepo
 from app.infra.db.repos.jobs import JobsRepo
 from app.infra.db.repos.uploads import UploadsRepo
 from app.infra.storage.artifacts_fs import write_artifact_bytes
 from app.infra.storage.uploads_fs import get_tags_json_path, get_upload_zip_path
-
-
-class ToolContext(Protocol):
-    """
-    Runtime context passed to tool runners.
-
-    Tool runners should use this interface to:
-    - emit events for UI visibility
-    - read input file paths (zip/tags)
-    - write artifacts in a standard way
-    """
-
-    job_id: str
-    upload_id: str
-
-    def emit_event(
-        self,
-        *,
-        level: str,
-        message: str,
-        kind: str | None = None,
-        payload: dict | None = None,
-    ) -> None: ...
-    def project_zip_path(self) -> str: ...
-    def tags_json_path(self) -> str | None: ...
-    def write_artifact(
-        self,
-        *,
-        kind: str,
-        rel_path: str,
-        content_type: str,
-        data: bytes,
-        meta: dict[str, Any] | None = None,
-    ) -> None: ...
 
 
 @dataclass
@@ -83,7 +49,7 @@ class _ToolContextImpl:
 
     def emit_event(
         self,
-        *,
+        # *,
         level: str,
         message: str,
         kind: str | None = None,
@@ -99,11 +65,11 @@ class _ToolContextImpl:
             payload_json=payload,
         )
 
-    def project_zip_path(self) -> str:
+    def get_project_zip_path(self) -> str:
         """Return absolute filesystem path to the saved project zip."""
         return str(get_upload_zip_path(self.upload_id))
 
-    def tags_json_path(self) -> str | None:
+    def get_tags_json_path(self) -> str | None:
         """Return absolute filesystem path to the optional tags json."""
         p = get_tags_json_path(self.upload_id)
         return str(p) if p else None
