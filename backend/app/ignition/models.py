@@ -19,7 +19,7 @@ EdgeType = Literal["references", "embeds", "reads", "writes", "calls"]
 
 
 class GraphMeta(APIModel):
-    tool_id: str = "ignition.graph"
+    tool_id: str = "ignition.project.explorer"
     job_id: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     parser_version: str = "0.1.0"

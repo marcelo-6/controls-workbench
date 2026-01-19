@@ -126,7 +126,7 @@ def build_graph_bundle(
     stats = _compute_stats(export=export, graph_full=graph_full, graph_ui=graph_ui)
 
     bundle = GraphBundle(
-        tool_id="ignition.graph",
+        tool_id="ignition.project.explorer",
         generated_at=generated_at,
         project={
             "title": export.project.title,

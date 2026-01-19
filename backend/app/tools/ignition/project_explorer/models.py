@@ -130,7 +130,7 @@ class GraphBundle(BaseModel):
     Complete output bundle produced by the Ignition Project Explorer tool.
 
     Attributes:
-        tool_id: Tool identifier (e.g. "ignition.graph").
+        tool_id: Tool identifier (e.g. "ignition.project.explorer").
         generated_at: UTC ISO timestamp.
         project: Minimal project metadata (from project.json).
         profile: Effective profile/settings used to generate graph_ui.

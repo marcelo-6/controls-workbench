@@ -2,7 +2,7 @@
 """
 Ignition Project Explorer tool package.
 
-This package implements the "ignition.graph" tool:
+This package implements the "ignition.project.explorer" tool:
 - Parse a Designer project export ZIP
 - Build dependency graphs (full + UI-filtered)
 - Emit artifacts for fast UI rendering (including per-node source payloads)

@@ -97,7 +97,7 @@ def test_jobs_repo_create_recent_set_status(db_path: Path) -> None:
         jobs = JobsRepo(conn)
         jobs.create(
             job_id="j1",
-            tool_id="ignition.graph",
+            tool_id="ignition.project.explorer",
             upload_id="u1",
             created_at="2026-01-15T00:10:00Z",
             last_accessed_at="2026-01-15T00:10:00Z",
@@ -140,7 +140,7 @@ def test_events_repo_append_tail_order(db_path: Path) -> None:
         )
         JobsRepo(conn).create(
             job_id="j1",
-            tool_id="ignition.graph",
+            tool_id="ignition.project.explorer",
             upload_id="u1",
             created_at="2026-01-15T00:10:00Z",
             last_accessed_at="2026-01-15T00:10:00Z",
@@ -176,7 +176,7 @@ def test_artifacts_repo_upsert_list_get(db_path: Path) -> None:
         )
         JobsRepo(conn).create(
             job_id="j1",
-            tool_id="ignition.graph",
+            tool_id="ignition.project.explorer",
             upload_id="u1",
             created_at="2026-01-15T00:10:00Z",
             last_accessed_at="2026-01-15T00:10:00Z",

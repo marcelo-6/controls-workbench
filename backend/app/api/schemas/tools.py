@@ -2,7 +2,7 @@
 """
 Tools API schemas.
 
-Tools are runnable capabilities exposed by the backend (e.g., ignition.graph).
+Tools are runnable capabilities exposed by the backend (e.g., ignition.project.explorer).
 """
 
 from __future__ import annotations

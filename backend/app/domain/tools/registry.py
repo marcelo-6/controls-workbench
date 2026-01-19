@@ -28,7 +28,7 @@ class ToolSpec:
     Public metadata describing an available tool.
 
     Attributes:
-        tool_id: Stable identifier used in API calls (e.g., "ignition.graph").
+        tool_id: Stable identifier used in API calls (e.g., "ignition.project.explorer").
         name: Human-friendly name for UI selection lists.
         description: Short description for the UI.
     """
@@ -148,5 +148,5 @@ def build_tools_registry() -> ToolsRegistry:
         runner=ignition_project_explorer_runner,
     )
 
-    # reg.register(... ignition.graph ...)
+    # reg.register(... ignition.project.explorer ...)
     return reg

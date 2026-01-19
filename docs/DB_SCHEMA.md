@@ -54,7 +54,7 @@ Primary history/state table. Replaces filesystem scanning.
 | Column | Type | Notes |
 |---|---|---|
 | `job_id` | TEXT PK | UUID string |
-| `tool_id` | TEXT NOT NULL | e.g. `ignition.graph` |
+| `tool_id` | TEXT NOT NULL | e.g. `ignition.project.explorer` |
 | `upload_id` | TEXT NOT NULL FK → uploads(upload_id) | |
 | `status` | TEXT NOT NULL | `queued`, `running`, `success`, `failed` |
 | `created_at` | TEXT NOT NULL | |

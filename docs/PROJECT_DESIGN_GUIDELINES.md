@@ -131,7 +131,7 @@ tests/
 * Classes: `PascalCase`
 * Functions: `snake_case`
 * Constants: `UPPER_SNAKE_CASE`
-* Tool IDs: `namespace.tool_name` (e.g., `ignition.graph`)
+* Tool IDs: `namespace.tool_name` (e.g., `ignition.project.explorer`)
 
 ## API Design Conventions
 

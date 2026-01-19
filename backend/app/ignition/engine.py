@@ -460,7 +460,7 @@ def build_graph(root: Path, job_id: str) -> tuple[GraphDoc, dict, str]:
     summary_md = f"""# Summary
 
 - Job: `{job_id}`
-- Tool: `ignition.graph`
+- Tool: `ignition.project.explorer`
 - Created: {datetime.now(UTC).isoformat()}
 - Parse seconds: {meta.stats.get("parse_seconds")}
 - Nodes: {meta.stats.get("nodes")}

@@ -97,7 +97,7 @@ class JobsService:
         Create a new job row and enqueue execution.
 
         Args:
-            tool_id: Tool identifier (e.g., 'ignition.graph').
+            tool_id: Tool identifier (e.g., 'ignition.project.explorer').
             upload_id: Existing upload identifier.
             params: Optional JSON-serializable tool parameters.
 
