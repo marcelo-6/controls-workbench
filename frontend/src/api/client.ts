@@ -1,8 +1,17 @@
 import type { ApiResponse } from "./types";
 
 export class ApiClient {
-  async request<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(path, {
+async request<T>(path: string, init?: RequestInit): Promise<T> {
+  const start = performance.now();
+  console.debug(
+    `%c[API] → ${path}`,
+    "color: #0af; font-weight: bold",
+    { init }
+  );
+
+  let res: Response;
+  try {
+    res = await fetch(path, {
       ...init,
       headers: {
         "Content-Type": "application/json",
@@ -10,37 +19,79 @@ export class ApiClient {
       },
       credentials: "include"
     });
-
-    if (!res.ok) {
-      // Try to read APIResponse error
-      try {
-        const payload = (await res.json()) as ApiResponse<any>;
-        const msg =
-          payload?.error?.detail ||
-          payload?.message ||
-          `HTTP ${res.status} ${res.statusText}`;
-        throw new Error(msg);
-      } catch {
-        throw new Error(`HTTP ${res.status} ${res.statusText}`);
-      }
-    }
-
-    // Not all endpoints return JSON (downloads)
-    const contentType = res.headers.get("content-type") || "";
-    if (contentType.includes("application/json")) {
-      const payload = (await res.json()) as ApiResponse<T>;
-      if (payload.status !== "success") {
-        throw new Error(payload.error?.detail || payload.message || "Request failed");
-      }
-      if (payload.data === undefined) {
-        throw new Error("API returned no data");
-      }
-      return payload.data;
-    }
-
-    // fallback (non-json endpoints)
-    return (await res.text()) as unknown as T;
+  } catch (networkErr) {
+    console.error(
+      `%c[API] NETWORK ERROR ← ${path}`,
+      "color: red; font-weight: bold",
+      networkErr
+    );
+    throw networkErr;
   }
+
+  console.debug(
+    `%c[API] ← ${path} status=${res.status} (${(performance.now() - start).toFixed(1)}ms)`,
+    "color: #0af; font-weight: bold",
+    { headers: Object.fromEntries(res.headers.entries()) }
+  );
+
+  // Handle non-OK responses
+  if (!res.ok) {
+    console.warn(
+      `%c[API] Non-OK response ← ${path}`,
+      "color: orange; font-weight: bold"
+    );
+
+    try {
+      const payload = (await res.json()) as ApiResponse<any>;
+      console.warn("[API] Error payload:", payload);
+
+      const msg =
+        payload?.error?.detail ||
+        payload?.message ||
+        `HTTP ${res.status} ${res.statusText}`;
+
+      throw new Error(msg);
+    } catch (jsonErr) {
+      console.error("[API] Failed to parse error JSON:", jsonErr);
+      throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    }
+  }
+
+  // Detect JSON vs text
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    let payload: ApiResponse<T>;
+
+    try {
+      payload = (await res.json()) as ApiResponse<T>;
+      console.debug("[API] JSON payload:", payload);
+    } catch (jsonErr) {
+      console.error(
+        `%c[API] JSON PARSE ERROR ← ${path}`,
+        "color: red; font-weight: bold",
+        jsonErr
+      );
+      throw new Error("Failed to parse JSON response");
+    }
+
+    if (payload.status !== "success") {
+      console.error("[API] API error payload:", payload);
+      throw new Error(payload.error?.detail || payload.message || "Request failed");
+    }
+
+    if (payload.data === undefined) {
+      console.error("[API] Missing data field:", payload);
+      throw new Error("API returned no data");
+    }
+
+    return payload.data;
+  }
+
+  // Non-JSON fallback
+  const text = await res.text();
+  console.debug("[API] Text response:", text);
+  return text as unknown as T;
+}
 
   async login(password: string): Promise<void> {
     await this.request<{ ok: boolean }>("/api/auth/login", {
@@ -104,21 +155,21 @@ export class ApiClient {
   }
 
   async getGraph(jobId: string) {
-    return await this.request<any>(`/api/tools/ignition/graph/${jobId}`);
+    return await this.request<any>(`/api/runs/${jobId}/artifacts/graph`);
   }
 
   async getReport(jobId: string) {
-    return await this.request<any>(`/api/tools/ignition/report/${jobId}`);
+    return await this.request<any>(`/api/runs/${jobId}/artifacts/report`);
   }
 
   async getSummary(jobId: string) {
-    return await this.request<any>(`/api/tools/ignition/summary/${jobId}`);
+    return await this.request<any>(`/api/runs/${jobId}/artifacts/summary`);
   }
 
   // ---------------- Ignition (indexed) ----------------
 
   async getTree(jobId: string) {
-    return await this.request<any>(`/api/tools/ignition/tree/${jobId}`);
+    return await this.request<any>(`/api/runs/${jobId}/artifacts/tree`);
   }
 
   async searchIndex(jobId: string, q: string) {

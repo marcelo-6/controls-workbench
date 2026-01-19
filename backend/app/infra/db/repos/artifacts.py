@@ -16,6 +16,7 @@ Unique constraint: one artifact of a given kind per job (UNIQUE(job_id, kind)).
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from typing import Any
 
@@ -37,10 +38,15 @@ class ArtifactsRepo:
         content_type: str,
         size_bytes: int,
         created_at: str,
-        meta_json: str | None = None,
+        meta_json: dict[str, Any] | None = None,
     ) -> None:
         """Insert or update a job artifact row by (job_id, kind)."""
         try:
+            payload_text = (
+                json.dumps(meta_json, separators=(",", ":"), sort_keys=True)
+                if meta_json is not None
+                else None
+            )
             self._conn.execute(
                 """
                 INSERT INTO job_artifacts (
@@ -61,7 +67,7 @@ class ArtifactsRepo:
                     content_type,
                     size_bytes,
                     created_at,
-                    meta_json,
+                    payload_text,
                 ),
             )
         except Exception as e:

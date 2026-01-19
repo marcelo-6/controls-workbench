@@ -13,6 +13,7 @@ SQLite-friendly.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from typing import Any
 
@@ -33,16 +34,21 @@ class EventsRepo:
         level: str,
         message: str,
         kind: str | None = None,
-        payload_json: str | None = None,
+        payload_json: dict[str, Any] | None = None,
     ) -> None:
         """Append a new event row for a job."""
         try:
+            payload_text = (
+                json.dumps(payload_json, separators=(",", ":"), sort_keys=True)
+                if payload_json is not None
+                else None
+            )
             self._conn.execute(
                 """
                 INSERT INTO job_events (job_id, ts, level, kind, message, payload_json)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (job_id, ts, level, kind, message, payload_json),
+                (job_id, ts, level, kind, message, payload_text),
             )
         except Exception as e:
             raise DBError(
@@ -66,6 +72,15 @@ class EventsRepo:
             """,
             (job_id, limit),
         ).fetchall()
-        out = [dict(r) for r in rows]
-        out.reverse()
+        out: list[dict[str, Any]] = []
+        for r in reversed(rows):
+            d = dict(r)
+            # Optional: decode payload_json back to dict for callers.
+            # If your API expects a dict, uncomment this.
+            if d.get("payload_json"):
+                try:
+                    d["payload_json"] = json.loads(d["payload_json"])
+                except Exception:
+                    pass
+            out.append(d)
         return out

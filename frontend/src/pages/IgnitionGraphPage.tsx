@@ -139,30 +139,52 @@ export default function IgnitionGraphPage() {
 
     const tick = async () => {
       try {
+        console.debug(
+          `%c[TICK] job=${selectedJobId}`,
+          "color:#9c27b0;font-weight:bold"
+        );
+
         const st = await api.getJob(selectedJobId);
-        if (cancelled) return;
-        setJob(st);
+        console.debug("[TICK] job status:", st);
 
         const terminal = st.status === "success" || st.status === "failed";
         const done = !!st.artifactsReady && terminal;
 
-        // Poll events while running; once more after terminal to catch last lines
+        console.debug("[TICK] terminal=", terminal, "done=", done);
+
+        // Poll events
         if (!terminal || !eventsFinalLoadedRef.current) {
+          console.debug("[TICK] polling events…");
           const ev = await api.getEvents(selectedJobId, 2000);
+          console.debug("[TICK] events:", ev);
           if (!cancelled) setLines(ev.lines || []);
           if (terminal) eventsFinalLoadedRef.current = true;
         }
-        if (!done) return;
 
-        // Indexed tree (preferred)
+        if (!done) {
+          console.debug("[TICK] not done yet, waiting for artifacts…");
+          return;
+        }
+
+        // Tree load
+        console.debug("[TICK] tree state:", {
+          treeLoaded: treeLoadedRef.current,
+          inFlight: treeLoadInFlightRef.current,
+          treeNotFound: treeNotFoundRef.current
+        });
+
         if (st.status === "success" && !treeLoadedRef.current && !treeLoadInFlightRef.current) {
+          console.debug("[TICK] loading tree…");
           treeLoadInFlightRef.current = true;
           setTreeLoading(true);
+
           try {
             const t = await api.getTree(selectedJobId);
-            if (!cancelled) setTree(t.tree);
+            console.debug("[TICK] tree response:", t);
+            if (!cancelled) setTree(t);
             treeLoadedRef.current = true;
-          } catch (e: any) {
+          } catch (e) {
+            console.error("[TICK] tree load error:", e);
             const msg = e.message || "Failed to load tree";
             if (!cancelled) setTreeError(msg);
             if (String(msg).toLowerCase().includes("tree not found")) {
@@ -174,45 +196,52 @@ export default function IgnitionGraphPage() {
           }
         }
 
-        // Back-compat fallback: older runs won't have a tree index
+        // Fallback
+        console.debug("[TICK] fallback check:", {
+          treeNotFound: treeNotFoundRef.current,
+          fallbackLoaded: graphFallbackLoadedRef.current
+        });
+
         if (st.status === "success" && treeNotFoundRef.current && !graphFallbackLoadedRef.current) {
+          console.debug("[TICK] loading fallback graph…");
           graphFallbackLoadedRef.current = true;
           try {
             const g = await api.getGraph(selectedJobId);
+            console.debug("[TICK] fallback graph:", g);
             if (!cancelled) setGraph(g.graph);
-          } catch {
-            // ignore
+          } catch (e) {
+            console.error("[TICK] fallback graph error:", e);
           }
         }
 
-        // Report/summary are still useful even with indexed graph slicing
-        if (!reportLoadedRef.current) {
-          reportLoadedRef.current = true;
-          try {
-            const r = await api.getReport(selectedJobId);
-            if (!cancelled) setReport(r.report);
-          } catch {
-            // ignore
-          }
-        }
-
+        // Summary
         if (!summaryLoadedRef.current) {
+          console.debug("[TICK] loading summary…");
           summaryLoadedRef.current = true;
           try {
             const s = await api.getSummary(selectedJobId);
+            console.debug("[TICK] summary:", s);
             if (!cancelled) setSummary(s.markdown || "");
-          } catch {
-            // ignore
+          } catch (e) {
+            console.error("[TICK] summary error:", e);
           }
         }
 
-        // Stop polling after we’ve reached a stable done state
+        // Stop polling
         const treeAttempted = treeLoadedRef.current || treeNotFoundRef.current;
         const fallbackOk = !treeNotFoundRef.current || graphFallbackLoadedRef.current;
 
+        console.debug("[TICK] stopPolling check:", { treeAttempted, fallbackOk });
+        console.debug("[TICK] flags:", {
+          treeLoaded: treeLoadedRef.current,
+          treeNotFound: treeNotFoundRef.current,
+          tree,
+          treeError
+        });
+        
         if (treeAttempted && fallbackOk) stopPolling();
-      } catch {
-        // ignore transient
+      } catch (err) {
+        console.error("[TICK] unexpected error:", err);
       }
     };
 
@@ -229,7 +258,7 @@ export default function IgnitionGraphPage() {
     setBusy(true);
     try {
       const up = await api.createUpload(projectZip, tagsJson || undefined);
-      const jobRes = await api.createJob("ignition.graph", up.uploadId, {});
+      const jobRes = await api.createJob("ignition.project.explorer", up.uploadId, {});
       enqueueSnackbar("Job created", { variant: "success" });
 
       setSelectedJobId(jobRes.jobId);

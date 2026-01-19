@@ -9,6 +9,8 @@ streaming semantics.
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, Response
 from fastapi.responses import FileResponse
 
@@ -68,4 +70,9 @@ def download_artifact(
         FileResponse: Streaming file response.
     """
     payload, content_type = svc.read_artifact(job_id=job_id, kind=kind)
+    # If the artifact is JSON, wrap it in APIResponse
+    if content_type == "application/json":
+        return ok(json.loads(payload))
+
+    # Otherwise return raw bytes
     return Response(content=payload, media_type=content_type)
