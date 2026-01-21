@@ -1,3 +1,4 @@
+// @refresh reset
 import React, { useEffect, useRef, useState } from "react";
 import {
   Box,
@@ -40,7 +41,7 @@ import { api } from "../api/client";
 import GraphView from "../components/GraphView";
 import ProjectExplorerTree from "../components/ProjectExplorerTree";
 import { useOutput } from "../state/output";
-// @refresh reset
+
 type JobStatus = "queued" | "running" | "success" | "failed";
 
 const drawerWidth = 360;
@@ -99,6 +100,9 @@ export default function IgnitionGraphPage() {
   const graphFallbackLoadedRef = useRef(false);
   const pollTimerRef = useRef<number | null>(null);
   const eventsFinalLoadedRef = useRef(false);
+  const treeAttemptedRef = useRef(false);
+  const graphAttemptedRef = useRef(false);
+
 
   useEffect(() => {
     console.log("IGNITION GRAPH PAGE MOUNTED");
@@ -113,6 +117,11 @@ export default function IgnitionGraphPage() {
     summaryLoadedRef.current = false;
     graphFallbackLoadedRef.current = false;
     eventsFinalLoadedRef.current = false;
+    treeAttemptedRef.current = false;
+    graphAttemptedRef.current = false;
+
+    setTreeAttempted(false);
+    setGraphAttempted(false);
   }, [selectedJobId]);
 
   const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -147,39 +156,39 @@ export default function IgnitionGraphPage() {
     if (!selectedJobId) return;
 
     let cancelled = false;
+    const ac = new AbortController();
 
     console.debug("%c[Polling started]", "color:#4caf50;font-weight:bold");
 
     const tick = async () => {
       if (cancelled) return;
 
-      console.debug("%c[TICK]", "color:#9c27b0;font-weight:bold");
-
-      // 1. Load job
       let st;
       try {
         st = await api.getJob(selectedJobId);
         if (!cancelled) setJob(st);
       } catch (e) {
-        console.error("Failed to load job:", e);
+        if (!cancelled) console.error("Failed to load job:", e);
         return;
       }
 
       const terminal = st.status === "success" || st.status === "failed";
 
-      // 2. Always poll events until terminal
+      // Always poll events until terminal
       try {
         const ev = await api.getEvents(selectedJobId, 2000);
         if (!cancelled) setLines(ev.lines || []);
       } catch (e) {
-        console.error("Failed to load events:", e);
+        if (!cancelled) console.error("Failed to load events:", e);
       }
 
       if (!terminal) return;
 
-      // 3. Load TREE exactly once
-      if (!treeAttempted) {
+      // TREE once
+      if (!treeAttemptedRef.current) {
+        treeAttemptedRef.current = true;
         setTreeAttempted(true);
+
         try {
           const t = await api.getArtifactJson(selectedJobId, "tree");
           console.debug("[TICK] tree:", t.data);
@@ -190,9 +199,11 @@ export default function IgnitionGraphPage() {
         }
       }
 
-      // 4. Load GRAPH exactly once
-      if (!graphAttempted) {
+      // GRAPH once
+      if (!graphAttemptedRef.current) {
+        graphAttemptedRef.current = true;
         setGraphAttempted(true);
+
         try {
           const g = await api.getArtifactJson(selectedJobId, "graph_ui");
           console.debug("[TICK] graph:", g.data);
@@ -202,27 +213,23 @@ export default function IgnitionGraphPage() {
         }
       }
 
-      // 5. Stop polling once both attempts are done
-      if (treeAttempted && graphAttempted) {
+      // Stop once both attempts are done
+      if (treeAttemptedRef.current && graphAttemptedRef.current) {
         console.debug("%c[Polling stopped]", "color:#f44336;font-weight:bold");
         stopPolling();
       }
     };
 
-    // Run immediately
     tick();
+    pollTimerRef.current = window.setInterval(tick, 1500);
 
-    // Start interval
-    pollTimerRef.current = window.setInterval(() => {
-      tick();
-    }, 1500);
-
-    // Cleanup
     return () => {
       cancelled = true;
       stopPolling();
+      ac.abort();
     };
-  }, [selectedJobId, treeAttempted, graphAttempted]);
+  }, [selectedJobId]);
+
 
   const submit = async () => {
     if (!projectZip) return;
@@ -292,7 +299,7 @@ export default function IgnitionGraphPage() {
     if (!graph) {
       try {
         const g = await api.getArtifactJson(selectedJobId!, "graph_ui");
-        setGraph(g);
+        setGraph(g.data);
       } catch (e) {
         enqueueSnackbar("No graph available yet", { variant: "warning" });
       }
