@@ -162,6 +162,7 @@ def _resource_to_node(res: Resource) -> GraphNode:
     meta: dict[str, Any] = {
         "binary_only": bool(res.binary_only),
         "section": res.section,
+        "files": [f.kind for f in res.files],
     }
 
     return GraphNode(
