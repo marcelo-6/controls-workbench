@@ -205,7 +205,7 @@ export default function IgnitionGraphPage() {
         setGraphAttempted(true);
 
         try {
-          const g = await api.getArtifactJson(selectedJobId, "graph_ui");
+          const g = await api.getArtifactJson(selectedJobId, "graph_full");
           console.debug("[TICK] graph:", g.data);
           if (!cancelled) setGraph(g.data);
         } catch (e) {
@@ -298,7 +298,7 @@ export default function IgnitionGraphPage() {
     // Later we’ll swap this to server-side slicing.
     if (!graph) {
       try {
-        const g = await api.getArtifactJson(selectedJobId!, "graph_ui");
+        const g = await api.getArtifactJson(selectedJobId!, "graph_full");
         setGraph(g.data);
       } catch (e) {
         enqueueSnackbar("No graph available yet", { variant: "warning" });

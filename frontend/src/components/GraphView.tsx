@@ -42,20 +42,59 @@ type Props = {
   report: any | null;
   summary: string;
 };
+type GroupBy = "type" | "section";
+const [groupBy, setGroupBy] = useState<GroupBy>("type");
 
 function artifactUrl(jobId: string, relPath: string) {
-  return `/api/jobs/${jobId}/artifact?path=${encodeURIComponent(relPath)}`;
+  return `/api/runs/${jobId}/artifacts/${encodeURIComponent(relPath)}`;
 }
 
-function nodeKind(n: any): string {
+function nodeSection(n: any): string | null {
+  const meta = n?.metadata ?? n?.data ?? {};
+  if (meta?.section) return String(meta.section);
+
+  const tags: string[] = n?.tags ?? meta?.tags ?? [];
+  const secTag = tags.find((t) => String(t).toLowerCase().startsWith("section:"));
+  if (secTag) return String(secTag).split(":").slice(1).join(":") || null;
+
+  return null;
+}
+
+function nodeKind(n: any, groupBy: "type" | "section" = "type"): string {
+  if (groupBy === "section") {
+    return nodeSection(n) ?? "Other";
+  }
+  // groupBy === "type"
   return (n?.data?.kind || n?.type || "resource") as string;
 }
 
-function toRfNodes(graphNodes: any[], jobId?: string | null): Node[] {
-  return graphNodes.map((n) => {
-    const kind = nodeKind(n);
-    const thumbPath = n?.data?.thumbnail_path;
+
+
+function deriveThumbnailRelPath(nodeId: string) {
+  return `node:${nodeId}:thumbnail`;
+}
+
+function toRfNodes(graphNodes: any[], jobId?: string | null, groupBy: "type" | "section" = "type"): Node[] {
+  return (graphNodes || []).map((n) => {
+    const kind = nodeKind(n, groupBy);
+
+    // Support either node.data.* or "metadata/tags/status/tooltip" top-level
+    const meta = n?.data ?? n?.metadata ?? {};
+    const tags = n?.tags ?? meta?.tags ?? [];
+    const status = n?.status ?? meta?.status ?? null;
+    const description = n?.description ?? meta?.description ?? null;
+    const tooltip = n?.tooltip ?? n?.path ?? "";
+
+    // Prefer explicit thumbnail_path if present, otherwise derive it.
+    const thumbPath =
+      n?.data?.thumbnail_path ??
+      meta?.thumbnail_path ??
+      (n?.id ? deriveThumbnailRelPath(n.id) : null);
+
     const thumbnailUrl = jobId && thumbPath ? artifactUrl(jobId, thumbPath) : null;
+
+    // Fan-in/out metrics might exist in n.data.metrics OR meta.metrics OR be absent
+    const metrics = n?.data?.metrics ?? meta?.metrics ?? undefined;
 
     return {
       id: n.id,
@@ -65,7 +104,11 @@ function toRfNodes(graphNodes: any[], jobId?: string | null): Node[] {
         label: n.label,
         kind,
         path: n.path,
-        metrics: n?.data?.metrics,
+        tooltip,
+        status,
+        description,
+        tags,
+        metrics,
         thumbnailUrl,
         raw: n
       },
@@ -74,16 +117,26 @@ function toRfNodes(graphNodes: any[], jobId?: string | null): Node[] {
   });
 }
 
+
 function toRfEdges(graphEdges: any[]): Edge[] {
-  return graphEdges.map((e) => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    animated: e.confidence === "high",
-    label: e.type,
-    data: e
-  }));
+  return (graphEdges || []).map((e) => {
+    const { score, level } = normalizeConfidence(e.confidence);
+
+    return {
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      animated: level === "high" || score >= 0.85,
+      label: prettyEdgeLabel(e.type),
+      data: {
+        ...e,
+        confidenceScore: score,
+        confidenceLevel: level
+      }
+    };
+  });
 }
+
 
 function FitOnVersion({ version }: { version: number }) {
   const { fitView } = useReactFlow();
@@ -98,6 +151,28 @@ function FitOnVersion({ version }: { version: number }) {
   return null;
 }
 
+function normalizeConfidence(c: any): { score: number; level: "high" | "medium" | "low" } {
+  // Accept: "high" | "medium" | "low" OR number 0..1 OR int 0/1/2/3 etc.
+  if (typeof c === "string") {
+    const v = c.toLowerCase();
+    if (v === "high") return { score: 1.0, level: "high" };
+    if (v === "medium") return { score: 0.6, level: "medium" };
+    return { score: 0.3, level: "low" };
+  }
+  if (typeof c === "number") {
+    const score = c > 1 ? Math.max(0, Math.min(1, c / 3)) : Math.max(0, Math.min(1, c));
+    const level = score >= 0.8 ? "high" : score >= 0.5 ? "medium" : "low";
+    return { score, level };
+  }
+  return { score: 0.3, level: "low" };
+}
+
+function prettyEdgeLabel(t: any): string {
+  const s = String(t || "references");
+  return s.replace(/_/g, " ");
+}
+
+
 type FilterMode = "strict" | "neighbors";
 
 export default function GraphView({ jobId, graph, report, summary }: Props) {
@@ -111,9 +186,9 @@ export default function GraphView({ jobId, graph, report, summary }: Props) {
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [layoutAll, setLayoutAll] = useState(false);
   const [layoutOpts, setLayoutOpts] = useState<DagreLayoutOptions>({
-    direction: "LR",
-    nodeSep: 60,
-    rankSep: 110,
+    direction: "TB",
+    nodeSep: 150,
+    rankSep: 250,
     ranker: "network-simplex",
     align: "UL",
     marginX: 40,
@@ -138,13 +213,14 @@ export default function GraphView({ jobId, graph, report, summary }: Props) {
 
   const allTypes = useMemo(() => {
     const s = new Set<string>();
-    (graph.nodes || []).forEach((n: any) => s.add(nodeKind(n)));
+    (graph.nodes || []).forEach((n: any) => s.add(nodeKind(n, groupBy)));
     return Array.from(s).sort();
-  }, [graph]);
+  }, [graph, groupBy]);
+
 
   // Initial layout on graph load
   useEffect(() => {
-    const ns = toRfNodes(graph.nodes || [], jobId);
+    const ns = toRfNodes(graph.nodes || [], jobId, groupBy);
     const es = toRfEdges(graph.edges || []);
 
     const laid = layoutDagre(ns, es, layoutOpts);
@@ -292,6 +368,18 @@ export default function GraphView({ jobId, graph, report, summary }: Props) {
             <MenuItem value="neighbors">Include neighbors</MenuItem>
             <MenuItem value="strict">Strict match</MenuItem>
           </TextField>
+          <TextField
+            select
+            size="small"
+            label="Group by"
+            value={groupBy}
+            onChange={(e) => setGroupBy(e.target.value as GroupBy)}
+            sx={{ width: 150 }}
+          >
+            <MenuItem value="type">Type</MenuItem>
+            <MenuItem value="section">Section</MenuItem>
+          </TextField>
+
 
           <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
             {allTypes.map((t) => {
