@@ -258,8 +258,8 @@ def _discover_perspective(zip_file: zipfile.ZipFile, names: set[str]) -> list[Re
             )
         )
 
-    # Styles (resource.json often + data.bin)
-    styles_prefix = "com.inductiveautomation.perspective/styles/"
+    # Styles (resource.json)
+    styles_prefix = "com.inductiveautomation.perspective/stylesheet/"
     for n in list(names):
         if not n.startswith(styles_prefix) or not n.endswith("/resource.json"):
             continue
@@ -267,8 +267,28 @@ def _discover_perspective(zip_file: zipfile.ZipFile, names: set[str]) -> list[Re
         style_path = rel[: -len("/resource.json")]
         folder = _folder_of(n)
         files: list[ResourceFile] = [ResourceFile(zip_path=n, kind="resource.json")]
-        if _contains(names, folder + "config.json"):
-            files.append(ResourceFile(zip_path=folder + "config.json", kind="config.json"))
+        if _contains(names, folder + "stylesheet.css"):
+            files.append(ResourceFile(zip_path=folder + "stylesheet.css", kind="stylesheet.css"))
+        binary_only = _contains(names, folder + "data.bin")
+        out.append(
+            Resource(
+                type_key="perspective.style_class",
+                path=style_path,
+                files=files,
+                binary_only=binary_only,
+                section=_SECTION_PERSPECTIVE,
+            )
+        )
+    styles_prefix = "com.inductiveautomation.perspective/style-classes/"
+    for n in list(names):
+        if not n.startswith(styles_prefix) or not n.endswith("/resource.json"):
+            continue
+        rel = n[len(styles_prefix) :]
+        style_path = rel[: -len("/resource.json")]
+        folder = _folder_of(n)
+        files: list[ResourceFile] = [ResourceFile(zip_path=n, kind="resource.json")]
+        if _contains(names, folder + "style.json"):
+            files.append(ResourceFile(zip_path=folder + "style.json", kind="style.json"))
         binary_only = _contains(names, folder + "data.bin")
         out.append(
             Resource(
@@ -294,26 +314,56 @@ def _discover_perspective(zip_file: zipfile.ZipFile, names: set[str]) -> list[Re
         )
 
     # Session events (names-only + raw file bodies where available)
-    sess_prefix = "com.inductiveautomation.perspective/session-events/"
-    for n in list(names):
-        if not n.startswith(sess_prefix) or not n.endswith("/resource.json"):
-            continue
-        rel = n[len(sess_prefix) :]
-        p = rel[: -len("/resource.json")]
-        folder = _folder_of(n)
-        files: list[ResourceFile] = [ResourceFile(zip_path=n, kind="resource.json")]
-        if _contains(names, folder + "config.json"):
-            files.append(ResourceFile(zip_path=folder + "config.json", kind="config.json"))
-        binary_only = _contains(names, folder + "data.bin")
-        out.append(
-            Resource(
-                type_key="perspective.session_event",
-                path=p,
-                files=files,
-                binary_only=binary_only,
-                section=_SECTION_PERSPECTIVE,
+    SESSION_PREFIX = "com.inductiveautomation.perspective/"
+    sess_prefix = [
+        f"{SESSION_PREFIX}accelerometer",
+        f"{SESSION_PREFIX}auth-challenge",
+        f"{SESSION_PREFIX}barcode",
+        f"{SESSION_PREFIX}bluetooth",
+        f"{SESSION_PREFIX}form-submission-handler",
+        f"{SESSION_PREFIX}key-event",
+        f"{SESSION_PREFIX}message",
+        f"{SESSION_PREFIX}nfc-scan",
+        f"{SESSION_PREFIX}page-config",
+        f"{SESSION_PREFIX}page-startup",
+        f"{SESSION_PREFIX}session-props",
+        f"{SESSION_PREFIX}shutdown",
+        f"{SESSION_PREFIX}startup",
+    ]
+
+    for pref in sess_prefix:
+        for n in list(names):
+            # Only match folders that contain a session-event resource.json
+            if not n.startswith(pref) or not n.endswith("/resource.json"):
+                continue
+
+            rel = n[len(pref) :]
+            p = rel[: -len("/resource.json")]
+            folder = _folder_of(n)
+
+            files: list[ResourceFile] = [ResourceFile(zip_path=n, kind="resource.json")]
+
+            # Optional config.json
+            if _contains(names, folder + "config.json"):
+                files.append(ResourceFile(zip_path=folder + "config.json", kind="config.json"))
+
+            # Optional data.bin
+            binary_only = _contains(names, folder + "data.bin")
+
+            # collect all Python files under this folder
+            for fname in names:
+                if fname.startswith(folder) and fname.endswith(".py"):
+                    files.append(ResourceFile(zip_path=fname, kind="script"))
+
+            out.append(
+                Resource(
+                    type_key="perspective.session_event",
+                    path=p,
+                    files=files,
+                    binary_only=binary_only,
+                    section=_SECTION_PERSPECTIVE,
+                )
             )
-        )
 
     return out
 
@@ -349,21 +399,30 @@ def _discover_scripts(zip_file: zipfile.ZipFile, names: set[str]) -> list[Resour
             )
 
     # Gateway event scripts sometimes exist as .py in exports (best-effort)
-    evt_prefix = "ignition/gateway-event-scripts/"
-    for n in list(names):
-        if not n.startswith(evt_prefix) or not n.endswith(".py"):
-            continue
-        rel = n[len(evt_prefix) :]
-        path = rel.replace(".py", "")
-        out.append(
-            Resource(
-                type_key="script.gateway_event",
-                path=path,
-                files=[ResourceFile(zip_path=n, kind="script")],
-                binary_only=False,
-                section=_SECTION_SCRIPTS,
+    evt_prefix = [
+        "ignition/message/",
+        "ignition/scheduled/",
+        "ignition/shutdown/",
+        "ignition/startup",
+        "ignition/tag-change",
+        "ignition/timer",
+        "ignition/update",
+    ]
+    for pref in evt_prefix:
+        for n in list(names):
+            if not n.startswith(pref) or not n.endswith(".py"):
+                continue
+            rel = n[len(pref) :]
+            path = rel.replace(".py", "")
+            out.append(
+                Resource(
+                    type_key="script.gateway_event",
+                    path=path,
+                    files=[ResourceFile(zip_path=n, kind="script")],
+                    binary_only=False,
+                    section=_SECTION_SCRIPTS,
+                )
             )
-        )
 
     return out
 
@@ -376,6 +435,7 @@ def _discover_named_queries(zip_file: zipfile.ZipFile, names: set[str]) -> list[
     prefixes = [
         "com.inductiveautomation.ignition/named-query/",
         "ignition/named-queries/",
+        "ignition/named-query/",
     ]
     for pref in prefixes:
         for n in list(names):
@@ -407,6 +467,7 @@ def _discover_sfc(zip_file: zipfile.ZipFile, names: set[str]) -> list[Resource]:
     prefixes = [
         "com.inductiveautomation.ignition/sfc/",
         "ignition/sfc/",
+        "com.inductiveautomation.sfc/charts",
     ]
     for pref in prefixes:
         for n in list(names):
@@ -436,6 +497,7 @@ def _discover_event_streams(zip_file: zipfile.ZipFile, names: set[str]) -> list[
     prefixes = [
         "com.inductiveautomation.ignition/event-streams/",
         "ignition/event-streams/",
+        "com.inductiveautomation.eventstream/event-streams",
     ]
     for pref in prefixes:
         for n in list(names):
@@ -465,6 +527,7 @@ def _discover_reports(zip_file: zipfile.ZipFile, names: set[str]) -> list[Resour
     prefixes = [
         "com.inductiveautomation.reporting/reports/",
         "ignition/reports/",
+        "com.inductiveautomation.reporting/reports",
     ]
     for pref in prefixes:
         for n in list(names):
@@ -492,6 +555,7 @@ def _discover_alarm_pipelines(zip_file: zipfile.ZipFile, names: set[str]) -> lis
     prefixes = [
         "com.inductiveautomation.ignition/alarm-notification/",
         "ignition/alarm-notification/",
+        "com.inductiveautomation.alarm-notification/alarm-pipelines/",
     ]
     for pref in prefixes:
         for n in list(names):
@@ -519,6 +583,7 @@ def _discover_project_properties(zip_file: zipfile.ZipFile, names: set[str]) -> 
     # Typically: ignition/project-properties/resource.json or similar
     candidates = [
         "ignition/project-properties/resource.json",
+        "ignition/project.json",
         "com.inductiveautomation.ignition/project-properties/resource.json",
     ]
     for c in candidates:

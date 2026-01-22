@@ -564,7 +564,7 @@ export default function IgnitionGraphPage() {
                     minHeight: 0,
                   }}
                 >
-                  <Box sx={{ p: 1, display: "flex", flexDirection: "column", gap: 1 }}>
+                  {/* <Box sx={{ p: 1, display: "flex", flexDirection: "column", gap: 1 }}>
                     <Typography variant="subtitle2">Graph slice</Typography>
                     <TextField
                       select
@@ -590,7 +590,7 @@ export default function IgnitionGraphPage() {
                       <ToggleButton value="in">In</ToggleButton>
                       <ToggleButton value="out">Out</ToggleButton>
                     </ToggleButtonGroup>
-                  </Box>
+                  </Box> */}
 
                   <Divider />
                   <Box sx={{ flex: 1, minHeight: 0 }}>

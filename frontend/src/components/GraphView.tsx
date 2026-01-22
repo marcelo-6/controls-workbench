@@ -1,3 +1,4 @@
+// src/components/GraphView.tsx
 import React, { useEffect, useMemo, useState, useDeferredValue } from "react";
 import {
   Box,
@@ -14,7 +15,8 @@ import {
   Typography,
   MenuItem,
   Switch,
-  FormControlLabel
+  FormControlLabel,
+  Slider
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
@@ -33,13 +35,15 @@ import ReactFlow, {
   useNodesState,
   useEdgesState,
   applyNodeChanges,
-  applyEdgeChanges
+  applyEdgeChanges,
 } from "reactflow";
 import { useTheme } from "@mui/material/styles";
 
 import { api } from "../api/client";
 import { layoutDagre, type DagreLayoutOptions } from "../utils/layout";
 import ResourceNode from "./ResourceNode";
+import NodeInspectorDrawer from "./NodeInspectorDrawer";
+import { useArtifactIndex } from "../hooks/useArtifactIndex";
 
 type Props = {
   jobId?: string | null;
@@ -52,18 +56,11 @@ type GroupBy = "type" | "section";
 type FilterMode = "strict" | "neighbors";
 
 type SelectedDetails = {
-  node: any; // GraphNode
+  node: any;      // GraphNode
   inbound: any[]; // GraphEdge[]
-  outbound: any[]; // GraphEdge[]
+  outbound: any[];// GraphEdge[]
 };
 
-function artifactUrl(jobId: string, relPath: string) {
-  // NOTE: keep consistent with your backend routes
-  // You previously used /api/jobs/<id>/artifact?path=...
-  // Here you use /api/runs/<id>/artifacts/<relPath>
-  // Keep whatever is correct for your backend.
-  return `/api/runs/${jobId}/artifacts/${encodeURIComponent(relPath)}`;
-}
 
 function nodeSection(n: any): string | null {
   const meta = n?.metadata ?? {};
@@ -85,8 +82,8 @@ function nodeKind(n: any, groupBy: GroupBy = "type"): string {
 
 function toRfNodes(graphNodes: any[], jobId?: string | null): Node[] {
   return (graphNodes || []).map((n) => {
-    // Thumbnails exist for many nodes as: nodes/<id>/thumbnail.png
-    const thumbnailUrl = jobId ? artifactUrl(jobId, `node:${n.id}:thumbnail`) : null;
+    const thumbnailKind = `node:${n.id}:thumbnail`;
+    const thumbnailUrl = jobId ? api.artifactHref(jobId, thumbnailKind) : null;
 
     return {
       id: n.id,
@@ -121,7 +118,7 @@ function toRfEdges(graphEdges: any[]): Edge[] {
     source: e.source,
     target: e.target,
     label: e.type,
-    animated: false, //(e.confidence ?? 1.0) >= 0.85,
+    animated: false,
     data: {
       type: e.type,
       confidence: e.confidence ?? 1.0,
@@ -134,26 +131,13 @@ function toRfEdges(graphEdges: any[]): Edge[] {
 
 function FitOnVersion({ version }: { version: number }) {
   const { fitView } = useReactFlow();
-
   useEffect(() => {
     const t = window.setTimeout(() => {
       fitView({ padding: 0.12, duration: 250 });
     }, 0);
     return () => window.clearTimeout(t);
   }, [version, fitView]);
-
   return null;
-}
-
-function formatConfidence(x: any): string {
-  const v = typeof x === "number" ? x : Number(x ?? 1);
-  if (Number.isNaN(v)) return "—";
-  return v.toFixed(2);
-}
-
-function prettyEdgeLabel(t: any): string {
-  const s = String(t || "references");
-  return s.replace(/_/g, " ");
 }
 
 function KeyValueBlock({ obj }: { obj: any }) {
@@ -172,50 +156,6 @@ function KeyValueBlock({ obj }: { obj: any }) {
       }}
     >
       {JSON.stringify(obj ?? {}, null, 2)}
-    </Box>
-  );
-}
-
-function EdgeList({
-  title,
-  edges
-}: {
-  title: string;
-  edges: any[];
-}) {
-  return (
-    <Box>
-      <Typography variant="subtitle2">
-        {title} ({edges.length})
-      </Typography>
-
-      <Stack spacing={1} sx={{ mt: 1 }}>
-        {edges.slice(0, 80).map((e) => (
-          <Box
-            key={e.id}
-            sx={{
-              border: "1px solid",
-              borderColor: "divider",
-              borderRadius: 1.5,
-              p: 1
-            }}
-          >
-            <Typography variant="body2" sx={{ fontFamily: "ui-monospace, monospace" }}>
-              {prettyEdgeLabel(e.type)} • conf {formatConfidence(e.confidence)}
-            </Typography>
-            {e.evidence ? (
-              <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                {e.evidence}
-              </Typography>
-            ) : null}
-          </Box>
-        ))}
-        {edges.length > 80 ? (
-          <Typography variant="caption" color="text.secondary">
-            Showing first 80 edges…
-          </Typography>
-        ) : null}
-      </Stack>
     </Box>
   );
 }
@@ -249,24 +189,24 @@ export default function GraphView({ jobId, graph, report, summary }: Props) {
   const search = useDeferredValue(searchInput);
   const [filterMode, setFilterMode] = useState<FilterMode>("neighbors");
 
+  // ---- NEW: edge confidence cutoff
+  const [edgeMinConfidence, setEdgeMinConfidence] = useState(0.0);
+
   // ---- RF state
-  // const [nodes, setNodes] = useState<Node[]>([]);
-  // const [edges, setEdges] = useState<Edge[]>([]);
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  // ---- Selection (Phase 1: local graph only)
+  const [nodes, setNodes] = useNodesState<Node>([]);
+  const [edges, setEdges] = useEdgesState<Edge>([]);
+
+  // ---- Selection
   const [selected, setSelected] = useState<SelectedDetails | null>(null);
 
-  // ---- Issues dialog (legacy)
-  const [issuesOpen, setIssuesOpen] = useState(false);
-
-  // ---- Summary dialog (Phase 1 + Summary button)
+  // ---- Summary dialog (Phase 1)
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryErr, setSummaryErr] = useState<string>("");
   const [summaryData, setSummaryData] = useState<any | null>(null);
 
-  
+  // ---- Phase 2: artifacts index
+  const { byNodeId: artifactsByNodeId } = useArtifactIndex(jobId);
 
   const nodeById = useMemo(() => {
     const m = new Map<string, any>();
@@ -293,13 +233,12 @@ export default function GraphView({ jobId, graph, report, summary }: Props) {
     return Array.from(s).sort();
   }, [graph, groupBy]);
 
-  // Initial layout on graph load (do not reset filters on groupBy changes)
+  // Initial layout on graph load
   useEffect(() => {
     if (!graph) return;
 
     const ns = toRfNodes(graph.nodes || [], jobId);
     const es = toRfEdges(graph.edges || []);
-
     const laid = layoutDagre(ns, es, layoutOpts);
 
     setNodes(laid.nodes);
@@ -315,9 +254,15 @@ export default function GraphView({ jobId, graph, report, summary }: Props) {
     const allowedTypes = new Set(typeFilter);
     const keepType = (t: string) => (allowedTypes.size ? allowedTypes.has(t) : true);
 
-    // adjacency for neighbors mode
+    // adjacency for neighbors mode (based on confidence-filtered edges)
     const adj = new Map<string, Set<string>>();
-    for (const e of edges) {
+
+    const confidenceFilteredEdges = edges.filter((e) => {
+      const c = (e.data as any)?.confidence ?? 1.0;
+      return c >= edgeMinConfidence;
+    });
+
+    for (const e of confidenceFilteredEdges) {
       if (!adj.has(e.source)) adj.set(e.source, new Set());
       if (!adj.has(e.target)) adj.set(e.target, new Set());
       adj.get(e.source)!.add(e.target);
@@ -327,7 +272,6 @@ export default function GraphView({ jobId, graph, report, summary }: Props) {
     const baseKept = new Set<string>();
 
     for (const n of nodes) {
-      // IMPORTANT: filter key should match groupBy choice
       const raw = (n.data as any)?.raw;
       const kind = raw ? nodeKind(raw, groupBy) : (n.data as any)?.nodeType ?? "resource";
       if (!keepType(kind)) continue;
@@ -354,10 +298,12 @@ export default function GraphView({ jobId, graph, report, summary }: Props) {
     }
 
     const ns = nodes.filter((n) => kept.has(n.id));
-    const es = edges.filter((e) => kept.has(e.source) && kept.has(e.target));
+
+    // edges are already confidence-filtered for the visible graph
+    const es = confidenceFilteredEdges.filter((e) => kept.has(e.source) && kept.has(e.target));
 
     return { nodes: ns, edges: es, keptIds: kept };
-  }, [nodes, edges, typeFilter, search, filterMode, groupBy]);
+  }, [nodes, edges, typeFilter, search, filterMode, groupBy, edgeMinConfidence]);
 
   useEffect(() => {
     if (!selected?.node?.id) return;
@@ -365,12 +311,16 @@ export default function GraphView({ jobId, graph, report, summary }: Props) {
   }, [filtered.keptIds, selected]);
 
   const filtersActive =
-    typeFilter.length > 0 || searchInput.trim().length > 0 || filterMode !== "neighbors";
+    typeFilter.length > 0 ||
+    searchInput.trim().length > 0 ||
+    filterMode !== "neighbors" ||
+    edgeMinConfidence > 0;
 
   const clearFilters = () => {
     setTypeFilter([]);
     setSearchInput("");
     setFilterMode("neighbors");
+    setEdgeMinConfidence(0);
     enqueueSnackbar("Filters cleared", { variant: "info" });
   };
 
@@ -408,14 +358,13 @@ export default function GraphView({ jobId, graph, report, summary }: Props) {
     }
 
     setSummaryOpen(true);
-
     if (summaryData) return;
 
     setSummaryLoading(true);
     setSummaryErr("");
 
     try {
-      const res = await api.getArtifactJson(jobId, "summary"); // kind="summary" -> summary.json
+      const res = await api.getArtifactJson(jobId, "summary");
       setSummaryData(res?.data ?? res);
     } catch (e: any) {
       setSummaryErr(e.message || "Failed to load summary.json");
@@ -424,12 +373,13 @@ export default function GraphView({ jobId, graph, report, summary }: Props) {
     }
   };
 
-  const issues = report?.issues || {};
-  const orphanCount = (issues.orphans || []).length;
-  const brokenCount = (issues.broken_refs || []).length;
-  const cyclesCount = (issues.cycles || []).length;
-
   const nodeTypes = useMemo(() => ({ resource: ResourceNode }), []);
+
+  const selectedNodeArtifacts = useMemo(() => {
+    const nodeId = selected?.node?.id as string | undefined;
+    if (!nodeId) return null;
+    return artifactsByNodeId.get(nodeId) ?? null;
+  }, [selected, artifactsByNodeId]);
 
   return (
     <ReactFlowProvider>
@@ -467,6 +417,21 @@ export default function GraphView({ jobId, graph, report, summary }: Props) {
             <MenuItem value="type">Type</MenuItem>
             <MenuItem value="section">Section</MenuItem>
           </TextField>
+
+          {/* NEW: confidence slider */}
+          <Box sx={{ width: 220, px: 1 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.25 }}>
+              Edge confidence ≥ {edgeMinConfidence.toFixed(2)}
+            </Typography>
+            <Slider
+              size="small"
+              value={edgeMinConfidence}
+              min={0}
+              max={1}
+              step={0.05}
+              onChange={(_, v) => setEdgeMinConfidence(v as number)}
+            />
+          </Box>
 
           <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
             {allTypes.map((t) => {
@@ -520,46 +485,31 @@ export default function GraphView({ jobId, graph, report, summary }: Props) {
             Auto layout
           </Button>
 
-          <Button
-            size="small"
-            startIcon={<BugReportIcon />}
-            onClick={() => setIssuesOpen(true)}
-            disabled={!report}
-          >
-            Issues ({orphanCount + brokenCount + cyclesCount})
-          </Button>
         </Box>
 
         <Divider />
 
         {/* Graph */}
         <Box sx={{ flex: 1, minHeight: 0, pointerEvents: "auto" }}>
-            <ReactFlow
-              nodes={filtered.nodes}
-              edges={filtered.edges}
-              nodeTypes={nodeTypes}
-              onNodeClick={onNodeClick}
-              fitView
-              fitViewOptions={{ padding: 0.25 }}
-              onNodesChange={(changes) => {
-                // update the *master* nodes state (not filtered)
-                setNodes((nds) => applyNodeChanges(changes, nds));
-              }}
-              onEdgesChange={(changes) => {
-                setEdges((eds) => applyEdgeChanges(changes, eds));
-              }}
-              // ✅ interactivity knobs
-              nodesDraggable
-              nodesConnectable={false}   // keep false if you don't want users creating edges
-              elementsSelectable
-              selectNodesOnDrag
-              // panOnDrag={[1, 2]}         // left + middle mouse pan
-              zoomOnScroll
-              zoomOnPinch
-              panOnScroll={false}        // change to true if you prefer trackpad scroll to pan
-              minZoom={0.02}
-              maxZoom={4}
-            >
+          <ReactFlow
+            nodes={filtered.nodes}
+            edges={filtered.edges}
+            nodeTypes={nodeTypes}
+            onNodeClick={onNodeClick}
+            fitView
+            fitViewOptions={{ padding: 0.25 }}
+            onNodesChange={(changes) => setNodes((nds) => applyNodeChanges(changes, nds))}
+            onEdgesChange={(changes) => setEdges((eds) => applyEdgeChanges(changes, eds))}
+            nodesDraggable
+            nodesConnectable={false}
+            elementsSelectable
+            selectNodesOnDrag
+            zoomOnScroll
+            zoomOnPinch
+            panOnScroll={false}
+            minZoom={0.02}
+            maxZoom={4}
+          >
             <FitOnVersion version={fitVersion} />
             <MiniMap
               maskColor={isDark ? "rgba(0,0,0,0.40)" : "rgba(0,0,0,0.08)"}
@@ -571,7 +521,7 @@ export default function GraphView({ jobId, graph, report, summary }: Props) {
           </ReactFlow>
         </Box>
 
-        {/* Layout panel */}
+        {/* Layout panel (unchanged) */}
         <Drawer
           anchor="right"
           open={layoutOpen}
@@ -676,98 +626,18 @@ export default function GraphView({ jobId, graph, report, summary }: Props) {
           </Box>
         </Drawer>
 
-        {/* Node details drawer */}
-        <Drawer
-          anchor="right"
+        {/* ✅ Phase 2 inspector drawer */}
+        <NodeInspectorDrawer
           open={Boolean(selected)}
           onClose={() => setSelected(null)}
-          PaperProps={{
-            sx: (t) => ({
-              top: t.mixins.toolbar.minHeight,
-              height: `calc(100% - ${t.mixins.toolbar.minHeight}px)`
-            })
-          }}
-        >
-          <Box sx={{ width: 460, p: 2, display: "flex", flexDirection: "column", gap: 1 }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <Typography variant="h6" sx={{ flex: 1 }}>
-                Node inspector
-              </Typography>
-              <IconButton onClick={() => setSelected(null)}>
-                <CloseIcon />
-              </IconButton>
-            </Box>
+          jobId={jobId}
+          selected={selected}
+          nodeArtifacts={selectedNodeArtifacts}
+          edgeMinConfidence={edgeMinConfidence}
+          topOffsetPx={theme.mixins.toolbar.minHeight as number}
+        />
 
-            {selected?.node ? (
-              <>
-                {/* Overview */}
-                <Typography variant="subtitle2">{selected.node.label}</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {selected.node.type} • status {selected.node.status}
-                </Typography>
-
-                {selected.node.path ? (
-                  <Typography variant="body2" sx={{ fontFamily: "ui-monospace, monospace" }}>
-                    {selected.node.path}
-                  </Typography>
-                ) : null}
-
-                {selected.node.tooltip ? (
-                  <Typography variant="caption" color="text.secondary">
-                    {selected.node.tooltip}
-                  </Typography>
-                ) : null}
-
-                {selected.node.description ? (
-                  <Typography variant="caption" color="text.secondary">
-                    {selected.node.description}
-                  </Typography>
-                ) : null}
-
-                <Divider />
-
-                {/* Tags */}
-                <Typography variant="subtitle2">Tags</Typography>
-                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
-                  {(selected.node.tags || []).length ? (
-                    (selected.node.tags || []).map((t: string) => (
-                      <Chip key={t} size="small" label={t} variant="outlined" />
-                    ))
-                  ) : (
-                    <Typography variant="caption" color="text.secondary">
-                      —
-                    </Typography>
-                  )}
-                </Box>
-
-                <Divider />
-
-                {/* Metadata */}
-                <Typography variant="subtitle2">Metadata</Typography>
-                <KeyValueBlock obj={selected.node.metadata} />
-
-                <Divider />
-
-                {/* Relationships */}
-                <Typography variant="subtitle2">
-                  Relationships (in {selected.inbound.length} / out {selected.outbound.length})
-                </Typography>
-
-                <EdgeList title="Inbound" edges={selected.inbound} />
-                <Divider />
-                <EdgeList title="Outbound" edges={selected.outbound} />
-
-                <Divider />
-
-                {/* Raw */}
-                <Typography variant="subtitle2">Raw node</Typography>
-                <KeyValueBlock obj={selected.node} />
-              </>
-            ) : null}
-          </Box>
-        </Drawer>
-
-        {/* Summary dialog */}
+        {/* Summary dialog (unchanged) */}
         <Dialog open={summaryOpen} onClose={() => setSummaryOpen(false)} fullWidth maxWidth="md">
           <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             Summary
@@ -827,66 +697,6 @@ export default function GraphView({ jobId, graph, report, summary }: Props) {
           </DialogContent>
         </Dialog>
 
-        {/* Issues dialog (legacy) */}
-        <Dialog open={issuesOpen} onClose={() => setIssuesOpen(false)} fullWidth maxWidth="lg">
-          <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            Issues
-            <Box sx={{ flex: 1 }} />
-            <IconButton onClick={() => setIssuesOpen(false)}>
-              <CloseIcon />
-            </IconButton>
-          </DialogTitle>
-          <DialogContent dividers sx={{ height: 560 }}>
-            {!report ? (
-              <Typography variant="body2" color="text.secondary">
-                No report loaded.
-              </Typography>
-            ) : (
-              <Stack spacing={2}>
-                <Box>
-                  <Typography variant="subtitle2">Orphans ({(report?.issues?.orphans || []).length})</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Nodes with 0 inbound references (excluding missing nodes).
-                  </Typography>
-                  <Box sx={{ fontFamily: "ui-monospace, monospace", fontSize: 12, whiteSpace: "pre-wrap" }}>
-                    {(report?.issues?.orphans || []).slice(0, 200).join("\n") || "—"}
-                  </Box>
-                </Box>
-
-                <Divider />
-
-                <Box>
-                  <Typography variant="subtitle2">
-                    Broken refs ({(report?.issues?.broken_refs || []).length})
-                  </Typography>
-                  <Box sx={{ fontFamily: "ui-monospace, monospace", fontSize: 12, whiteSpace: "pre-wrap" }}>
-                    {JSON.stringify((report?.issues?.broken_refs || []).slice(0, 100), null, 2)}
-                  </Box>
-                </Box>
-
-                <Divider />
-
-                <Box>
-                  <Typography variant="subtitle2">
-                    Cycles ({(report?.issues?.cycles || []).length})
-                  </Typography>
-                  <Box sx={{ fontFamily: "ui-monospace, monospace", fontSize: 12, whiteSpace: "pre-wrap" }}>
-                    {JSON.stringify((report?.issues?.cycles || []).slice(0, 50), null, 2)}
-                  </Box>
-                </Box>
-
-                <Divider />
-
-                <Box>
-                  <Typography variant="subtitle2">Summary (legacy)</Typography>
-                  <Box sx={{ fontFamily: "ui-monospace, monospace", fontSize: 12, whiteSpace: "pre-wrap" }}>
-                    {summary || "—"}
-                  </Box>
-                </Box>
-              </Stack>
-            )}
-          </DialogContent>
-        </Dialog>
       </Box>
     </ReactFlowProvider>
   );
