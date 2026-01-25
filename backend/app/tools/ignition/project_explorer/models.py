@@ -27,6 +27,8 @@ Status semantics:
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -150,3 +152,84 @@ class GraphBundle(BaseModel):
     graph_full: Graph
     graph_ui: Graph
     tree: TreeNode
+
+
+@dataclass(frozen=True)
+class ProjectMeta:
+    """
+    Minimal project metadata.
+
+    Attributes:
+        title: Project title/name (best-effort from project.json).
+        description: Project description (best-effort).
+        parent: Parent project raw string (if project inheritance is configured).
+        raw: Raw parsed project.json dict (best-effort).
+        project_root: Selected project root prefix within the ZIP ("" for Designer export).
+    """
+
+    title: str
+    description: str | None
+    parent: str | None
+    raw: dict[str, Any]
+    project_root: str
+
+
+@dataclass(frozen=True)
+class ResourceFile:
+    """
+    A file belonging to a discovered resource.
+
+    Attributes:
+        zip_path: ZIP internal path.
+        kind: Logical kind for UI/indexer (e.g. "resource.json", "view.json", "script", "sql", "style.json", "config.json").
+    """
+
+    zip_path: str
+    kind: str
+
+
+@dataclass(frozen=True)
+class Resource:
+    """
+    A discovered Ignition resource folder (logical resource).
+
+    Attributes:
+        type_key: High-level resource type key (e.g. "perspective.view").
+        path: Logical path (Designer-like for Perspective, otherwise a best-effort relative path).
+        files: Files belonging to this resource (deterministic ordering).
+        binary_only: True if the resource contains data.bin.
+        section: Designer tree section label (used for ordering).
+        resource_json_path: ZIP path to the resource.json for this resource.
+        attributes: Parsed "attributes" from resource.json (best-effort).
+    """
+
+    type_key: str
+    path: str
+    files: list[ResourceFile]
+    binary_only: bool
+    section: str
+    resource_json_path: str
+    attributes: dict[str, Any]
+
+
+class ProjectExport:
+    """
+    Parsed project export representation backed by a ZIP file.
+
+    The object stores a ZIP path index and provides methods for iterating resources.
+    """
+
+    def __init__(
+        self, *, project: ProjectMeta, resources: list[Resource], all_paths: set[str]
+    ) -> None:
+        self.project = project
+        self.resources = resources
+        self._all_paths = all_paths
+
+    def has_path(self, zip_path: str) -> bool:
+        """Return True if the ZIP contains the given internal path."""
+        return zip_path in self._all_paths  # pragma: no cover
+
+    def iter_resources(self) -> Iterable[Resource]:
+        """Iterate discovered resources."""
+        return iter(self.resources)

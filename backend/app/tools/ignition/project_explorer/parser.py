@@ -1,600 +1,500 @@
 # backend/app/tools/ignition/project_explorer/parser.py
 """
-Ignition Designer project export ZIP parser.
+Ignition project export / gateway backup parser (manifest-driven).
 
-This module parses a *single* Ignition Designer project export ZIP (v1) and
-produces an in-memory representation of project resources sufficient to build:
+Core rule:
+- A "resource" is any folder containing a `resource.json`.
+- `resource.json.files` is the source of truth for the resource's files.
+- Folders without `resource.json` are just folders (not resources).
 
-- a Designer-ordered tree (sections + folders + leaf nodes)
-- a dependency graph (nodes + edges)
-- per-node "source" artifacts for fast frontend rendering:
-  - view.json bodies
-  - scripts (.py)
-  - named query SQL
-  - resource.json / config.json (when present)
-  - thumbnails for Perspective views
+Supported inputs:
+- Designer export ZIP: `project.json` at ZIP root
+- Gateway backup (or similar): `projects/<name>/project.json` (or `Projects/<name>/project.json`)
+  - If multiple projects exist, caller must specify `project_root`.
 
-Scope notes (v1):
-- Input: Designer project export ZIP only.
-- Tags: Not parsed from Gateway backups; tag export JSON may be added later.
-- Binary-only resources (resource.json + data.bin): represented as nodes only.
-
-The parser intentionally avoids any DB or filesystem writes. It reads ZIP entries
-and returns structured metadata + access to raw ZIP contents via helper methods.
+The parser performs no filesystem writes and no DB access.
 """
 
 from __future__ import annotations
 
+import json
 import zipfile
-from collections.abc import Iterable
-from dataclasses import dataclass
 from typing import Any
 
+from .constants import (
+    PFX_ALARM_PIPELINES,
+    PFX_EVENT_STREAMS,
+    PFX_IGNITION_GLOBAL_PROPS,
+    PFX_IGNITION_MESSAGE,
+    PFX_IGNITION_NAMED_QUERY,
+    PFX_IGNITION_SCHEDULED,
+    PFX_IGNITION_SCRIPT_PYTHON,
+    PFX_IGNITION_SHUTDOWN,
+    PFX_IGNITION_STARTUP,
+    PFX_IGNITION_TAG_CHANGE,
+    PFX_IGNITION_TIMER,
+    PFX_IGNITION_UPDATE,
+    PFX_PERSPECTIVE_ACCELEROMETER,
+    PFX_PERSPECTIVE_AUTH_CHALLENGE,
+    PFX_PERSPECTIVE_BARCODE,
+    PFX_PERSPECTIVE_BLUETOOTH,
+    PFX_PERSPECTIVE_FORM_SUBMISSION,
+    PFX_PERSPECTIVE_KEY_EVENT,
+    PFX_PERSPECTIVE_MESSAGE,
+    PFX_PERSPECTIVE_NFC_SCAN,
+    PFX_PERSPECTIVE_PAGE_CONFIG,
+    PFX_PERSPECTIVE_PAGE_STARTUP,
+    PFX_PERSPECTIVE_SESSION_PROPS,
+    PFX_PERSPECTIVE_SHUTDOWN,
+    PFX_PERSPECTIVE_STARTUP,
+    PFX_PERSPECTIVE_STYLE_CLASSES,
+    PFX_PERSPECTIVE_STYLESHEET,
+    PFX_PERSPECTIVE_VIEWS,
+    PFX_REPORTS,
+    PFX_SFC,
+    PROJECTS_DIR_CANDIDATES,
+    SECTION_ALARM_PIPELINES,
+    SECTION_EVENT_STREAMS,
+    SECTION_NAMED_QUERIES,
+    SECTION_PERSPECTIVE,
+    SECTION_PROPERTIES,
+    SECTION_REPORTS,
+    SECTION_SCRIPTS,
+    SECTION_SFC,
+    TYPE_ALARM_PIPELINE,
+    TYPE_EVENT_STREAM,
+    TYPE_NAMED_QUERY,
+    TYPE_PERSPECTIVE_ACCELEROMETER,
+    TYPE_PERSPECTIVE_AUTH_CHALLENGE,
+    TYPE_PERSPECTIVE_BARCODE,
+    TYPE_PERSPECTIVE_BLUETOOTH,
+    TYPE_PERSPECTIVE_FORM_SUBMISSION,
+    TYPE_PERSPECTIVE_KEY_EVENT,
+    TYPE_PERSPECTIVE_MESSAGE_HANDLER,
+    TYPE_PERSPECTIVE_NFC_SCAN,
+    TYPE_PERSPECTIVE_PAGE_CONFIG,
+    TYPE_PERSPECTIVE_PAGE_STARTUP,
+    TYPE_PERSPECTIVE_SESSION_PROPS,
+    TYPE_PERSPECTIVE_SHUTDOWN,
+    TYPE_PERSPECTIVE_STARTUP,
+    TYPE_PERSPECTIVE_STYLE_CLASS,
+    TYPE_PERSPECTIVE_STYLESHEET,
+    TYPE_PERSPECTIVE_VIEW,
+    TYPE_PROJECT_PROPERTIES,
+    TYPE_REPORT,
+    TYPE_SCRIPT_GATEWAY_EVENT,
+    TYPE_SCRIPT_PYTHON,
+    TYPE_SFC,
+    TYPE_UNKNOWN,
+)
+from .models import ProjectExport, ProjectMeta, Resource, ResourceFile
 
-@dataclass(frozen=True)
-class ProjectMeta:
+
+def parse_project_export(
+    zip_file: zipfile.ZipFile, project_root: str | None = None
+) -> ProjectExport:
     """
-    Minimal project metadata.
-
-    Attributes:
-        title: Project title/name (best-effort from project.json).
-        description: Project description (best-effort).
-        parent: Parent project raw string (if project inheritance is configured).
-        raw: Raw parsed project.json dict (best-effort).
-    """
-
-    title: str
-    description: str | None
-    parent: str | None
-    raw: dict[str, Any]
-
-
-@dataclass(frozen=True)
-class ResourceFile:
-    """
-    A discovered resource file inside the export.
-
-    Attributes:
-        zip_path: ZIP internal path.
-        kind: Logical kind (e.g. "view.json", "thumbnail", "script", "sql", "resource.json", "config.json", "data.bin").
-    """
-
-    zip_path: str
-    kind: str
-
-
-@dataclass(frozen=True)
-class Resource:
-    """
-    A discovered Ignition resource folder (logical resource).
-
-    Attributes:
-        type_key: High-level resource type key (e.g. "perspective.view", "script.python", "named_query").
-        path: Designer-like logical path (e.g. "Exchange/Dash/Dash" for views).
-        files: Files relevant for this resource.
-        binary_only: True if the resource contains data.bin (binary-only config).
-        section: Designer tree section label (used for ordering).
-    """
-
-    type_key: str
-    path: str
-    files: list[ResourceFile]
-    binary_only: bool
-    section: str
-
-
-class ProjectExport:
-    """
-    Parsed project export representation backed by a ZIP file.
-
-    The object stores a ZIP path index and provides methods for reading file bytes.
-    """
-
-    def __init__(
-        self, *, project: ProjectMeta, resources: list[Resource], all_paths: set[str]
-    ) -> None:
-        self.project = project
-        self.resources = resources
-        self._all_paths = all_paths
-
-    def has_path(self, zip_path: str) -> bool:
-        """Return True if the ZIP contains the given internal path."""
-        return zip_path in self._all_paths
-
-    def iter_resources(self) -> Iterable[Resource]:
-        """Iterate discovered resources."""
-        return iter(self.resources)
-
-
-# -------------------------
-# Parser entrypoint
-# -------------------------
-
-
-def parse_project_export(zip_file: zipfile.ZipFile) -> ProjectExport:
-    """
-    Parse an Ignition Designer project export ZIP.
+    Parse an Ignition project archive.
 
     Args:
         zip_file: Open ZipFile instance.
+        project_root: Optional project root prefix (e.g. "projects/MyProject/") for multi-project archives.
 
     Returns:
-        ProjectExport: Parsed project model (resources + minimal metadata).
+        ProjectExport: Parsed project model.
+
+    Raises:
+        ValueError: If project selection fails, project.json missing, or a resource manifest is invalid.
     """
     names = set(zip_file.namelist())
 
-    project_meta = _read_project_json(zip_file)
+    selected_root = _select_project_root(names, project_root)
+    project_meta = _read_project_json(zip_file, selected_root)
 
-    resources: list[Resource] = []
-    resources.extend(_discover_perspective(zip_file, names))
-    resources.extend(_discover_scripts(zip_file, names))
-    resources.extend(_discover_named_queries(zip_file, names))
-    resources.extend(_discover_sfc(zip_file, names))
-    resources.extend(_discover_event_streams(zip_file, names))
-    resources.extend(_discover_reports(zip_file, names))
-    resources.extend(_discover_alarm_pipelines(zip_file, names))
-    resources.extend(_discover_project_properties(zip_file, names))
+    resources = _discover_resources_by_manifest(zip_file, names, selected_root)
 
-    # Stable ordering within sections by path.
-    resources.sort(key=lambda r: (r.section, r.path))
+    # Stable ordering by section then path then resource_json_path.
+    resources.sort(key=lambda r: (r.section, r.path, r.resource_json_path))
 
     return ProjectExport(project=project_meta, resources=resources, all_paths=names)
 
 
-def _read_project_json(zip_file: zipfile.ZipFile) -> ProjectMeta:
+# -------------------------
+# Project root selection
+# -------------------------
+
+
+def _select_project_root(names: set[str], project_root: str | None) -> str:
     """
-    Read project.json at ZIP root (best-effort).
+    Determine the project root prefix within the ZIP.
+
+    Rules:
+    - If "project.json" exists at root, treat as Designer export => project_root = "".
+    - Else find projects under projects/<name>/project.json (or Projects/<name>/project.json).
+      - If exactly one project exists => select it.
+      - If multiple => require `project_root`.
+
+    Returns:
+        str: Selected project root prefix ("" or "projects/<name>/").
+
+    Raises:
+        ValueError: If no project.json found, or multiple projects exist without selection.
+    """
+    if "project.json" in names:
+        if project_root:
+            # If caller provides a root but designer export exists, prefer explicit selection only if it exists.
+            if project_root.rstrip("/") + "/project.json" in names:
+                return project_root.rstrip("/") + "/"
+        return ""
+
+    # Gateway backup style
+    candidates: list[str] = []
+    for base in PROJECTS_DIR_CANDIDATES:
+        for n in names:
+            if not n.startswith(base) or not n.endswith("/project.json"):
+                continue
+            # n: projects/Template/project.json -> root projects/Template/
+            root = n[: -len("project.json")]
+            candidates.append(root)
+
+    candidates = sorted(set(candidates))
+
+    if project_root:
+        pr = project_root.rstrip("/") + "/"
+        if pr + "project.json" not in names:
+            raise ValueError(f"project.json not found under selected project_root: {pr}")
+        return pr
+
+    if not candidates:
+        raise ValueError(
+            "project.json not found (expected root project.json or projects/<name>/project.json)"
+        )
+
+    if len(candidates) > 1:
+        raise ValueError(f"multiple projects found; specify project_root. candidates={candidates}")
+
+    return candidates[0]
+
+
+def _read_project_json(zip_file: zipfile.ZipFile, root: str) -> ProjectMeta:
+    """
+    Read project.json at the selected root (strict).
+
+    Args:
+        zip_file: Open ZipFile.
+        root: Project root prefix.
 
     Returns:
         ProjectMeta
+
+    Raises:
+        ValueError: If project.json is missing or invalid JSON.
     """
-    raw: dict[str, Any] = {}
-    title = "Ignition Project"
-    desc = None
-    parent = None
+    pj = f"{root}project.json" if root else "project.json"
+    raw_bytes = zip_file.read(pj)
 
-    if "project.json" in zip_file.namelist():
-        try:
-            data = zip_file.read("project.json")
-            raw = _try_json(data) or {}
-            title = str(raw.get("title") or raw.get("name") or title)
-            desc = raw.get("description")
-            parent = raw.get("parent")
-        except Exception:
-            pass
+    raw = _try_json(raw_bytes)
+    if not isinstance(raw, dict):
+        raise ValueError(f"project.json is not valid JSON object: {pj}")
 
-    return ProjectMeta(title=title, description=desc, parent=parent, raw=raw)
+    title = str(raw.get("title") or raw.get("name") or "Ignition Project")
+    desc = raw.get("description")
+    parent = raw.get("parent")
+
+    return ProjectMeta(title=title, description=desc, parent=parent, raw=raw, project_root=root)
 
 
 def _try_json(data: bytes) -> Any | None:
     try:
-        import json
-
         return json.loads(data.decode("utf-8"))
     except Exception:
         return None
 
 
 # -------------------------
-# Discovery helpers
+# Manifest-driven discovery
 # -------------------------
 
 
-def _folder_of(path: str) -> str:
-    p = path.rstrip("/")
-    if "/" not in p:
-        return ""
-    return p.rsplit("/", 1)[0] + "/"
-
-
-def _find_files_under(names: set[str], prefix: str) -> list[str]:
-    return [n for n in names if n.startswith(prefix) and not n.endswith("/")]
-
-
-def _contains(names: set[str], path: str) -> bool:
-    return path in names
-
-
-# Designer-like section labels (only included if present)
-_SECTION_PERSPECTIVE = "Perspective"
-_SECTION_SCRIPTS = "Scripting"
-_SECTION_NAMED_QUERIES = "Named Queries"
-_SECTION_SFC = "Sequential Function Charts (SFC)"
-_SECTION_EVENT_STREAMS = "Event Streams"
-_SECTION_REPORTS = "Reports"
-_SECTION_ALARM_PIPELINES = "Alarm Notification Pipelines"
-_SECTION_PROPERTIES = "Properties"
-
-
-def _discover_perspective(zip_file: zipfile.ZipFile, names: set[str]) -> list[Resource]:
+def _discover_resources_by_manifest(
+    zip_file: zipfile.ZipFile, names: set[str], root: str
+) -> list[Resource]:
     """
-    Discover Perspective resources:
-    - Views: com.inductiveautomation.perspective/views/<viewPath>/view.json (+ thumbnail.png)
-    - Styles: com.inductiveautomation.perspective/styles/...
-    - Session events: com.inductiveautomation.perspective/session-events/...
-    - Page config: com.inductiveautomation.perspective/page-config/config.json
+    Discover all resources by scanning for `resource.json` under `root`.
+
+    For each resource.json:
+    - parse it
+    - read `files` list
+    - validate declared files exist
+    - classify type/section/path
+    - build deterministic ResourceFile list:
+        [resource.json] + manifest files + optional data.bin
+
+    Args:
+        zip_file: Open ZipFile.
+        names: All zip internal paths.
+        root: Selected project root prefix.
+
+    Returns:
+        list[Resource]
     """
     out: list[Resource] = []
 
-    # Views
-    views_prefix = "com.inductiveautomation.perspective/views/"
-    for n in list(names):
-        if not n.startswith(views_prefix) or not n.endswith("/view.json"):
-            continue
-        rel = n[len(views_prefix) :]
-        view_path = rel[: -len("/view.json")]
+    prefix = root  # can be "" for Designer export
+    for rj in sorted(p for p in names if p.startswith(prefix) and p.endswith("/resource.json")):
+        manifest = _read_resource_manifest(zip_file, rj)
+        declared = manifest.get("files")
 
-        folder = _folder_of(n)
-        files: list[ResourceFile] = [ResourceFile(zip_path=n, kind="view.json")]
+        if not isinstance(declared, list) or not all(isinstance(x, str) for x in declared):
+            raise ValueError(f"Invalid resource.json (missing/invalid 'files') at: {rj}")
 
-        # thumbnail (best-effort)
-        for thumb in (
-            "thumbnail.png",
-            "thumbnail.jpg",
-            "thumbnail.jpeg",
-            "thumb.png",
-            "thumb.jpg",
-        ):
-            tpath = folder + thumb
-            if _contains(names, tpath):
-                files.append(ResourceFile(zip_path=tpath, kind="thumbnail"))
-                break
+        folder = rj[: -len("resource.json")]  # includes trailing slash
 
-        # resource/config for debugging if present
-        for extra in ("resource.json", "config.json"):
-            ep = folder + extra
-            if _contains(names, ep):
-                files.append(ResourceFile(zip_path=ep, kind=extra))
+        # Validate manifest files exist
+        missing: list[str] = []
+        for fname in declared:
+            fpath = folder + fname
+            if fpath not in names:
+                missing.append(fpath)
+        if missing:
+            raise ValueError(
+                f"Resource manifest declares missing files: {missing} (resource.json={rj})"
+            )
 
-        binary_only = _contains(names, folder + "data.bin")
+        # Build file list: resource.json first, then manifest order, then optional data.bin
+        files: list[ResourceFile] = [ResourceFile(zip_path=rj, kind="resource.json")]
+        for fname in declared:
+            fpath = folder + fname
+            files.append(ResourceFile(zip_path=fpath, kind=_kind_for_file(fname)))
+
+        # binary_only = (folder + "data.bin") in names
+        # if binary_only:
+        #     files.append(ResourceFile(zip_path=folder + "data.bin", kind="data.bin"))
+        # binary_only: presence of data.bin in folder
+        binary_path = folder + "data.bin"
+        binary_only = binary_path in names
+
+        # If data.bin exists but wasn't declared (defensive), append it once at end.
+        declared_paths = {folder + f for f in declared}
+        if binary_only and binary_path not in declared_paths:
+            files.append(ResourceFile(zip_path=binary_path, kind="data.bin"))
+
+        type_key, section, logical_path = _classify_resource(root, rj)
 
         out.append(
             Resource(
-                type_key="perspective.view",
-                path=view_path,
+                type_key=type_key,
+                path=logical_path,
                 files=files,
                 binary_only=binary_only,
-                section=_SECTION_PERSPECTIVE,
+                section=section,
+                resource_json_path=rj,
+                attributes=dict(manifest.get("attributes") or {}),
             )
         )
 
-    # Styles (resource.json)
-    styles_prefix = "com.inductiveautomation.perspective/stylesheet/"
-    for n in list(names):
-        if not n.startswith(styles_prefix) or not n.endswith("/resource.json"):
-            continue
-        rel = n[len(styles_prefix) :]
-        style_path = rel[: -len("/resource.json")]
-        folder = _folder_of(n)
-        files: list[ResourceFile] = [ResourceFile(zip_path=n, kind="resource.json")]
-        if _contains(names, folder + "stylesheet.css"):
-            files.append(ResourceFile(zip_path=folder + "stylesheet.css", kind="stylesheet.css"))
-        binary_only = _contains(names, folder + "data.bin")
-        out.append(
-            Resource(
-                type_key="perspective.style_class",
-                path=style_path,
-                files=files,
-                binary_only=binary_only,
-                section=_SECTION_PERSPECTIVE,
-            )
+    return out
+
+
+def _read_resource_manifest(zip_file: zipfile.ZipFile, resource_json_path: str) -> dict[str, Any]:
+    """
+    Read and parse a resource.json manifest.
+
+    Args:
+        zip_file: Open ZipFile.
+        resource_json_path: ZIP internal path to resource.json.
+
+    Returns:
+        dict[str, Any]: Parsed JSON.
+
+    Raises:
+        ValueError: If JSON is invalid or not an object.
+    """
+    raw = _try_json(zip_file.read(resource_json_path))
+    if not isinstance(raw, dict):
+        raise ValueError(f"resource.json is not a JSON object: {resource_json_path}")
+    return raw
+
+
+def _kind_for_file(fname: str) -> str:
+    """
+    Map a manifest file name to a logical kind used downstream.
+
+    Rules:
+    - thumbnail.* => "thumbnail"
+    - *.py => "script"
+    - *.sql => "sql"
+    - sfc.xml => "sfc.xml"
+    - otherwise => exact filename ("view.json", "config.json", "style.json", "props.json", ...)
+    """
+    lower = fname.lower()
+
+    if lower in (
+        "thumbnail.png",
+        "thumbnail.jpg",
+        "thumbnail.jpeg",
+        "thumb.png",
+        "thumb.jpg",
+        "thumb.jpeg",
+    ):
+        return "thumbnail"
+    if lower.endswith(".py"):
+        return "script"
+    if lower.endswith(".sql"):
+        return "sql"
+    if lower == "sfc.xml":
+        return "sfc.xml"
+    return fname
+
+
+# -------------------------
+# Classification (v1: Perspective-focused)
+# -------------------------
+
+
+def _strip_prefix(s: str, prefix: str) -> str:
+    return s[len(prefix) :] if s.startswith(prefix) else s
+
+
+def _classify_resource(root: str, resource_json_path: str) -> tuple[str, str, str]:
+    """
+    Classify a resource based on its location relative to the project root.
+
+    This classifier is intentionally location-based, but *manifest-driven* discovery
+    ensures we're only classifying actual resources (folders with resource.json).
+
+    Returns:
+        (type_key, section, logical_path)
+    """
+    rel = _strip_prefix(resource_json_path, root)
+
+    if not rel.endswith("/resource.json"):  # pragma: no cover
+        return (TYPE_UNKNOWN, SECTION_PROPERTIES, rel)  # pragma: no cover
+
+    rel_folder = rel[: -len("/resource.json")] + "/"
+
+    # -------------------------
+    # Perspective
+    # -------------------------
+
+    if rel_folder.startswith(PFX_PERSPECTIVE_VIEWS):
+        view_path = rel_folder[len(PFX_PERSPECTIVE_VIEWS) :].rstrip("/")
+        return (TYPE_PERSPECTIVE_VIEW, SECTION_PERSPECTIVE, view_path)
+
+    if rel_folder == PFX_PERSPECTIVE_PAGE_CONFIG:
+        return (
+            TYPE_PERSPECTIVE_PAGE_CONFIG,
+            SECTION_PERSPECTIVE,
+            "page-config",
+        )  # TODO remove hardcoded logical_path returns
+
+    if rel_folder.startswith(PFX_PERSPECTIVE_STYLE_CLASSES):
+        style_path = rel_folder[len(PFX_PERSPECTIVE_STYLE_CLASSES) :].rstrip("/")
+        return (TYPE_PERSPECTIVE_STYLE_CLASS, SECTION_PERSPECTIVE, style_path)
+
+    if rel_folder == PFX_PERSPECTIVE_STYLESHEET:
+        return (TYPE_PERSPECTIVE_STYLESHEET, SECTION_PERSPECTIVE, "stylesheet")
+
+    if rel_folder.startswith(PFX_PERSPECTIVE_MESSAGE):
+        p = rel_folder[len(PFX_PERSPECTIVE_MESSAGE) :].rstrip("/")
+        return (TYPE_PERSPECTIVE_MESSAGE_HANDLER, SECTION_PERSPECTIVE, f"message/{p}")
+
+    if rel_folder.startswith(PFX_PERSPECTIVE_FORM_SUBMISSION):
+        p = rel_folder[len(PFX_PERSPECTIVE_FORM_SUBMISSION) :].rstrip("/")
+        return (
+            TYPE_PERSPECTIVE_FORM_SUBMISSION,
+            SECTION_PERSPECTIVE,
+            f"form-submission-handler/{p}",
         )
-    styles_prefix = "com.inductiveautomation.perspective/style-classes/"
-    for n in list(names):
-        if not n.startswith(styles_prefix) or not n.endswith("/resource.json"):
-            continue
-        rel = n[len(styles_prefix) :]
-        style_path = rel[: -len("/resource.json")]
-        folder = _folder_of(n)
-        files: list[ResourceFile] = [ResourceFile(zip_path=n, kind="resource.json")]
-        if _contains(names, folder + "style.json"):
-            files.append(ResourceFile(zip_path=folder + "style.json", kind="style.json"))
-        binary_only = _contains(names, folder + "data.bin")
-        out.append(
-            Resource(
-                type_key="perspective.style_class",
-                path=style_path,
-                files=files,
-                binary_only=binary_only,
-                section=_SECTION_PERSPECTIVE,
-            )
-        )
 
-    # Page config
-    page_cfg = "com.inductiveautomation.perspective/page-config/config.json"
-    if _contains(names, page_cfg):
-        out.append(
-            Resource(
-                type_key="perspective.page_config",
-                path="page-config",
-                files=[ResourceFile(zip_path=page_cfg, kind="config.json")],
-                binary_only=False,
-                section=_SECTION_PERSPECTIVE,
-            )
-        )
+    if rel_folder.startswith(PFX_PERSPECTIVE_KEY_EVENT):
+        p = rel_folder[len(PFX_PERSPECTIVE_KEY_EVENT) :].rstrip("/")
+        return (TYPE_PERSPECTIVE_KEY_EVENT, SECTION_PERSPECTIVE, f"key-event/{p}")
 
-    # Session events (names-only + raw file bodies where available)
-    SESSION_PREFIX = "com.inductiveautomation.perspective/"
-    sess_prefix = [
-        f"{SESSION_PREFIX}accelerometer",
-        f"{SESSION_PREFIX}auth-challenge",
-        f"{SESSION_PREFIX}barcode",
-        f"{SESSION_PREFIX}bluetooth",
-        f"{SESSION_PREFIX}form-submission-handler",
-        f"{SESSION_PREFIX}key-event",
-        f"{SESSION_PREFIX}message",
-        f"{SESSION_PREFIX}nfc-scan",
-        f"{SESSION_PREFIX}page-config",
-        f"{SESSION_PREFIX}page-startup",
-        f"{SESSION_PREFIX}session-props",
-        f"{SESSION_PREFIX}shutdown",
-        f"{SESSION_PREFIX}startup",
-    ]
+    if rel_folder.startswith(PFX_PERSPECTIVE_ACCELEROMETER):
+        return (TYPE_PERSPECTIVE_ACCELEROMETER, SECTION_PERSPECTIVE, "accelerometer")
 
-    for pref in sess_prefix:
-        for n in list(names):
-            # Only match folders that contain a session-event resource.json
-            if not n.startswith(pref) or not n.endswith("/resource.json"):
-                continue
+    if rel_folder.startswith(PFX_PERSPECTIVE_AUTH_CHALLENGE):
+        return (TYPE_PERSPECTIVE_AUTH_CHALLENGE, SECTION_PERSPECTIVE, "auth-challenge")
 
-            rel = n[len(pref) :]
-            p = rel[: -len("/resource.json")]
-            folder = _folder_of(n)
+    if rel_folder.startswith(PFX_PERSPECTIVE_BARCODE):
+        return (TYPE_PERSPECTIVE_BARCODE, SECTION_PERSPECTIVE, "barcode")
 
-            files: list[ResourceFile] = [ResourceFile(zip_path=n, kind="resource.json")]
+    if rel_folder.startswith(PFX_PERSPECTIVE_BLUETOOTH):
+        return (TYPE_PERSPECTIVE_BLUETOOTH, SECTION_PERSPECTIVE, "bluetooth")
 
-            # Optional config.json
-            if _contains(names, folder + "config.json"):
-                files.append(ResourceFile(zip_path=folder + "config.json", kind="config.json"))
+    if rel_folder.startswith(PFX_PERSPECTIVE_NFC_SCAN):
+        return (TYPE_PERSPECTIVE_NFC_SCAN, SECTION_PERSPECTIVE, "nfc-scan")
 
-            # Optional data.bin
-            binary_only = _contains(names, folder + "data.bin")
+    if rel_folder.startswith(PFX_PERSPECTIVE_PAGE_STARTUP):
+        return (TYPE_PERSPECTIVE_PAGE_STARTUP, SECTION_PERSPECTIVE, "page-startup")
 
-            # collect all Python files under this folder
-            for fname in names:
-                if fname.startswith(folder) and fname.endswith(".py"):
-                    files.append(ResourceFile(zip_path=fname, kind="script"))
+    if rel_folder.startswith(PFX_PERSPECTIVE_SESSION_PROPS):
+        return (TYPE_PERSPECTIVE_SESSION_PROPS, SECTION_PERSPECTIVE, "session-props")
 
-            out.append(
-                Resource(
-                    type_key="perspective.session_event",
-                    path=p,
-                    files=files,
-                    binary_only=binary_only,
-                    section=_SECTION_PERSPECTIVE,
-                )
-            )
+    if rel_folder.startswith(PFX_PERSPECTIVE_STARTUP):
+        return (TYPE_PERSPECTIVE_STARTUP, SECTION_PERSPECTIVE, "startup")
 
-    return out
+    if rel_folder.startswith(PFX_PERSPECTIVE_SHUTDOWN):
+        return (TYPE_PERSPECTIVE_SHUTDOWN, SECTION_PERSPECTIVE, "shutdown")
 
+    # -------------------------
+    # Alarm pipelines / Event streams / Reports / SFC
+    # -------------------------
 
-def _discover_scripts(zip_file: zipfile.ZipFile, names: set[str]) -> list[Resource]:
-    """
-    Discover scripting resources (best-effort) by locating .py files under
-    known Ignition export folders.
-    """
-    out: list[Resource] = []
+    if rel_folder.startswith(PFX_ALARM_PIPELINES):
+        p = rel_folder[len(PFX_ALARM_PIPELINES) :].rstrip("/")
+        return (TYPE_ALARM_PIPELINE, SECTION_ALARM_PIPELINES, p)
 
-    # Common project library scripts
-    script_prefixes = [
-        "ignition/script-python/",
-        "com.inductiveautomation.ignition/scripting/",
-    ]
+    if rel_folder.startswith(PFX_EVENT_STREAMS):
+        p = rel_folder[len(PFX_EVENT_STREAMS) :].rstrip("/")
+        return (TYPE_EVENT_STREAM, SECTION_EVENT_STREAMS, p)
 
-    for pref in script_prefixes:
-        for n in list(names):
-            if not n.startswith(pref) or not n.endswith(".py"):
-                continue
-            rel = n[len(pref) :]
-            path = rel.replace(".py", "")
-            files = [ResourceFile(zip_path=n, kind="script")]
-            out.append(
-                Resource(
-                    type_key="script.python",
-                    path=path,
-                    files=files,
-                    binary_only=False,
-                    section=_SECTION_SCRIPTS,
-                )
-            )
+    if rel_folder.startswith(PFX_REPORTS):
+        p = rel_folder[len(PFX_REPORTS) :].rstrip("/")
+        return (TYPE_REPORT, SECTION_REPORTS, p)
 
-    # Gateway event scripts sometimes exist as .py in exports (best-effort)
-    evt_prefix = [
-        "ignition/message/",
-        "ignition/scheduled/",
-        "ignition/shutdown/",
-        "ignition/startup",
-        "ignition/tag-change",
-        "ignition/timer",
-        "ignition/update",
-    ]
-    for pref in evt_prefix:
-        for n in list(names):
-            if not n.startswith(pref) or not n.endswith(".py"):
-                continue
-            rel = n[len(pref) :]
-            path = rel.replace(".py", "")
-            out.append(
-                Resource(
-                    type_key="script.gateway_event",
-                    path=path,
-                    files=[ResourceFile(zip_path=n, kind="script")],
-                    binary_only=False,
-                    section=_SECTION_SCRIPTS,
-                )
-            )
+    if rel_folder.startswith(PFX_SFC):
+        p = rel_folder[len(PFX_SFC) :].rstrip("/")
+        return (TYPE_SFC, SECTION_SFC, p)
 
-    return out
+    # -------------------------
+    # Ignition folder (scripts, named queries, project properties)
+    # -------------------------
 
+    if rel_folder.startswith(PFX_IGNITION_SCRIPT_PYTHON):
+        p = rel_folder[len(PFX_IGNITION_SCRIPT_PYTHON) :].rstrip("/")
+        return (TYPE_SCRIPT_PYTHON, SECTION_SCRIPTS, p)
 
-def _discover_named_queries(zip_file: zipfile.ZipFile, names: set[str]) -> list[Resource]:
-    """
-    Discover Named Queries by locating .sql files under known export locations.
-    """
-    out: list[Resource] = []
-    prefixes = [
-        "com.inductiveautomation.ignition/named-query/",
-        "ignition/named-queries/",
-        "ignition/named-query/",
-    ]
-    for pref in prefixes:
-        for n in list(names):
-            if not n.startswith(pref) or not n.endswith(".sql"):
-                continue
-            rel = n[len(pref) :]
-            path = rel.replace(".sql", "")
-            folder = _folder_of(n)
-            files: list[ResourceFile] = [ResourceFile(zip_path=n, kind="sql")]
-            if _contains(names, folder + "resource.json"):
-                files.append(ResourceFile(zip_path=folder + "resource.json", kind="resource.json"))
-            if _contains(names, folder + "config.json"):
-                files.append(ResourceFile(zip_path=folder + "config.json", kind="config.json"))
-            binary_only = _contains(names, folder + "data.bin")
-            out.append(
-                Resource(
-                    type_key="named_query",
-                    path=path,
-                    files=files,
-                    binary_only=binary_only,
-                    section=_SECTION_NAMED_QUERIES,
-                )
-            )
-    return out
+    if rel_folder.startswith(PFX_IGNITION_NAMED_QUERY):
+        p = rel_folder[len(PFX_IGNITION_NAMED_QUERY) :].rstrip("/")
+        return (TYPE_NAMED_QUERY, SECTION_NAMED_QUERIES, p)
 
+    if rel_folder.startswith(PFX_IGNITION_GLOBAL_PROPS):
+        return (TYPE_PROJECT_PROPERTIES, SECTION_PROPERTIES, "global-props")
 
-def _discover_sfc(zip_file: zipfile.ZipFile, names: set[str]) -> list[Resource]:
-    out: list[Resource] = []
-    prefixes = [
-        "com.inductiveautomation.ignition/sfc/",
-        "ignition/sfc/",
-        "com.inductiveautomation.sfc/charts",
-    ]
-    for pref in prefixes:
-        for n in list(names):
-            if not n.startswith(pref) or not (n.endswith(".xml") or n.endswith("sfc.xml")):
-                continue
-            rel = n[len(pref) :]
-            path = rel.replace("sfc.xml", "").replace(".xml", "").strip("/")
-            folder = _folder_of(n)
-            files: list[ResourceFile] = [ResourceFile(zip_path=n, kind="sfc.xml")]
-            if _contains(names, folder + "resource.json"):
-                files.append(ResourceFile(zip_path=folder + "resource.json", kind="resource.json"))
-            binary_only = _contains(names, folder + "data.bin")
-            out.append(
-                Resource(
-                    type_key="sfc",
-                    path=path,
-                    files=files,
-                    binary_only=binary_only,
-                    section=_SECTION_SFC,
-                )
-            )
-    return out
+    # Ignition gateway event scripts: ignition/startup/<name>, ignition/shutdown, etc.
+    for pfx in (
+        PFX_IGNITION_MESSAGE,
+        PFX_IGNITION_SCHEDULED,
+        PFX_IGNITION_SHUTDOWN,
+        PFX_IGNITION_STARTUP,
+        PFX_IGNITION_TAG_CHANGE,
+        PFX_IGNITION_TIMER,
+        PFX_IGNITION_UPDATE,
+    ):
+        if rel_folder.startswith(pfx):
+            p = rel_folder[len(pfx) :].rstrip("/")
+            kind = pfx.rstrip("/").split("/")[-1]
+            logical = f"{kind}/{p}" if p else kind
+            return (TYPE_SCRIPT_GATEWAY_EVENT, SECTION_SCRIPTS, logical)
 
+    # Default fallback
+    if rel_folder.startswith("com.inductiveautomation.perspective/"):  # pragma: no cover
+        return (
+            TYPE_UNKNOWN,
+            SECTION_PERSPECTIVE,
+            rel_folder.rstrip("/"),
+        )  # pragma: no cover
 
-def _discover_event_streams(zip_file: zipfile.ZipFile, names: set[str]) -> list[Resource]:
-    out: list[Resource] = []
-    prefixes = [
-        "com.inductiveautomation.ignition/event-streams/",
-        "ignition/event-streams/",
-        "com.inductiveautomation.eventstream/event-streams",
-    ]
-    for pref in prefixes:
-        for n in list(names):
-            if not n.startswith(pref) or not n.endswith("/resource.json"):
-                continue
-            rel = n[len(pref) :]
-            path = rel[: -len("/resource.json")]
-            folder = _folder_of(n)
-            files: list[ResourceFile] = [ResourceFile(zip_path=n, kind="resource.json")]
-            if _contains(names, folder + "config.json"):
-                files.append(ResourceFile(zip_path=folder + "config.json", kind="config.json"))
-            binary_only = _contains(names, folder + "data.bin")
-            out.append(
-                Resource(
-                    type_key="event_stream",
-                    path=path,
-                    files=files,
-                    binary_only=binary_only,
-                    section=_SECTION_EVENT_STREAMS,
-                )
-            )
-    return out
-
-
-def _discover_reports(zip_file: zipfile.ZipFile, names: set[str]) -> list[Resource]:
-    out: list[Resource] = []
-    prefixes = [
-        "com.inductiveautomation.reporting/reports/",
-        "ignition/reports/",
-        "com.inductiveautomation.reporting/reports",
-    ]
-    for pref in prefixes:
-        for n in list(names):
-            if not n.startswith(pref) or not n.endswith("/resource.json"):
-                continue
-            rel = n[len(pref) :]
-            path = rel[: -len("/resource.json")]
-            folder = _folder_of(n)
-            files: list[ResourceFile] = [ResourceFile(zip_path=n, kind="resource.json")]
-            binary_only = _contains(names, folder + "data.bin")
-            out.append(
-                Resource(
-                    type_key="report",
-                    path=path,
-                    files=files,
-                    binary_only=binary_only,
-                    section=_SECTION_REPORTS,
-                )
-            )
-    return out
-
-
-def _discover_alarm_pipelines(zip_file: zipfile.ZipFile, names: set[str]) -> list[Resource]:
-    out: list[Resource] = []
-    prefixes = [
-        "com.inductiveautomation.ignition/alarm-notification/",
-        "ignition/alarm-notification/",
-        "com.inductiveautomation.alarm-notification/alarm-pipelines/",
-    ]
-    for pref in prefixes:
-        for n in list(names):
-            if not n.startswith(pref) or not n.endswith("/resource.json"):
-                continue
-            rel = n[len(pref) :]
-            path = rel[: -len("/resource.json")]
-            folder = _folder_of(n)
-            files: list[ResourceFile] = [ResourceFile(zip_path=n, kind="resource.json")]
-            binary_only = _contains(names, folder + "data.bin")
-            out.append(
-                Resource(
-                    type_key="alarm_pipeline",
-                    path=path,
-                    files=files,
-                    binary_only=binary_only,
-                    section=_SECTION_ALARM_PIPELINES,
-                )
-            )
-    return out
-
-
-def _discover_project_properties(zip_file: zipfile.ZipFile, names: set[str]) -> list[Resource]:
-    out: list[Resource] = []
-    # Typically: ignition/project-properties/resource.json or similar
-    candidates = [
-        "ignition/project-properties/resource.json",
-        "ignition/project.json",
-        "com.inductiveautomation.ignition/project-properties/resource.json",
-    ]
-    for c in candidates:
-        if _contains(names, c):
-            out.append(
-                Resource(
-                    type_key="project_properties",
-                    path="project-properties",
-                    files=[ResourceFile(zip_path=c, kind="resource.json")],
-                    binary_only=False,
-                    section=_SECTION_PROPERTIES,
-                )
-            )
-    return out
+    return (TYPE_UNKNOWN, SECTION_PROPERTIES, rel_folder.rstrip("/"))

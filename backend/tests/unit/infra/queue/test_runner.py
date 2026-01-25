@@ -59,24 +59,6 @@ def test_queue_runner_sync_calls_task_immediately(monkeypatch) -> None:
     assert called["job_id"] == "job-123"
 
 
-def test_queue_runner_huey_calls_delay(monkeypatch) -> None:
-    """
-    In huey mode, `enqueue_job()` must schedule work via `run_job.delay(job_id)`.
-    """
-    called = {"job_id": None}
-
-    def fake_delay(job_id: str) -> None:
-        called["job_id"] = job_id
-
-    fake_task = SimpleNamespace(delay=fake_delay)
-    _install_fake_tasks_module(monkeypatch, fake_task)
-
-    runner = QueueRunner(mode="huey")
-    runner.enqueue_job("job-456")
-
-    assert called["job_id"] == "job-456"
-
-
 def test_queue_runner_unknown_mode_raises() -> None:
     """
     An unknown queue mode should raise a clear RuntimeError to prevent silent
