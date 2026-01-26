@@ -20,7 +20,8 @@ from typing import Any
 from app.core.errors import BadRequestError
 from app.domain.tools.registry import ToolContext
 
-from .indexing import build_graph_bundle
+# from .indexing import build_graph_bundle
+from .analysis import build_graph_bundle
 from .parser import parse_project_export
 
 
