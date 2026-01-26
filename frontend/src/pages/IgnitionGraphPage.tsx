@@ -41,6 +41,9 @@ import { api } from "../api/client";
 import GraphView from "../components/GraphView";
 import ProjectExplorerTree from "../components/ProjectExplorerTree";
 import { useOutput } from "../state/output";
+import EChartsArtifact from "../components/EChartsArtifact";
+
+type VizMode = "tree" | "treemap" |"graph" | "flow";
 
 type JobStatus = "queued" | "running" | "success" | "failed";
 
@@ -62,6 +65,7 @@ const Sidebar = styled("div", {
 export default function IgnitionGraphPage() {
   const { enqueueSnackbar } = useSnackbar();
   const { setCurrentJobId, setLines } = useOutput();
+  const [vizMode, setVizMode] = useState<VizMode>("tree");
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -119,6 +123,7 @@ export default function IgnitionGraphPage() {
     eventsFinalLoadedRef.current = false;
     treeAttemptedRef.current = false;
     graphAttemptedRef.current = false;
+    setVizMode("tree");
 
     setTreeAttempted(false);
     setGraphAttempted(false);
@@ -544,6 +549,8 @@ export default function IgnitionGraphPage() {
           {job && (job.status === "queued" || job.status === "running") && <LinearProgress />}
           <Divider />
 
+
+
           <Box sx={{ flex: 1, minHeight: 0, display: "flex" }}>
             {!selectedJobId ? (
               <Box sx={{ p: 2 }}>
@@ -564,34 +571,6 @@ export default function IgnitionGraphPage() {
                     minHeight: 0,
                   }}
                 >
-                  {/* <Box sx={{ p: 1, display: "flex", flexDirection: "column", gap: 1 }}>
-                    <Typography variant="subtitle2">Graph slice</Typography>
-                    <TextField
-                      select
-                      size="small"
-                      label="Depth"
-                      value={depth}
-                      onChange={(e) => setDepth(Number(e.target.value))}
-                    >
-                      {[0, 1, 2, 3, 4, 5].map((n) => (
-                        <MenuItem key={n} value={n}>
-                          {n}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-
-                    <ToggleButtonGroup
-                      size="small"
-                      value={direction}
-                      exclusive
-                      onChange={(_e, v) => v && setDirection(v)}
-                    >
-                      <ToggleButton value="both">Both</ToggleButton>
-                      <ToggleButton value="in">In</ToggleButton>
-                      <ToggleButton value="out">Out</ToggleButton>
-                    </ToggleButtonGroup>
-                  </Box> */}
-
                   <Divider />
                   <Box sx={{ flex: 1, minHeight: 0 }}>
                     <ProjectExplorerTree
@@ -605,17 +584,61 @@ export default function IgnitionGraphPage() {
 
                 {/* Graph panel */}
                 <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
-                  {subgraphLoading && <LinearProgress />}
-                  {graph ? (
-                    <GraphView jobId={selectedJobId} graph={graph} report={report} summary={summary} />
-                  ) : (
-                    <Box sx={{ p: 2 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        Pick an element from the project explorer to generate a graph slice.
-                      </Typography>
-                    </Box>
-                  )}
+                  {/* header row for the viz toggle */}
+                  <Box sx={{ p: 1, display: "flex", alignItems: "center", gap: 1 }}>
+                    <Typography variant="subtitle2" sx={{ flex: 1 }}>
+                      Visualization
+                    </Typography>
+
+                    <ToggleButtonGroup
+                      exclusive
+                      size="small"
+                      value={vizMode}
+                      onChange={(_, v) => v && setVizMode(v)}
+                      sx={{
+                        "& .MuiToggleButton-root": {
+                          textTransform: "none",
+                          px: 1.5,
+                          borderRadius: 999,
+                        },
+                        "& .MuiToggleButtonGroup-grouped:not(:first-of-type)": { ml: 0.5 },
+                        "& .MuiToggleButtonGroup-grouped": { border: "1px solid", borderColor: "divider" },
+                      }}
+                    >
+                      <ToggleButton value="tree">Tree</ToggleButton>
+                      <ToggleButton value="treemap">Tree-map</ToggleButton>
+                      <ToggleButton value="graph">Graph</ToggleButton>
+                      <ToggleButton value="flow">Flow diagram</ToggleButton>
+                    </ToggleButtonGroup>
+                  </Box>
+
+                  <Divider />
+
+                  {/* content */}
+                  <Box sx={{ position: "absolute", inset: 0, top: 49 /* header height-ish */, minHeight: 0 }}>
+                    {vizMode === "tree" ? (
+                      <EChartsArtifact jobId={selectedJobId} kind="echarts_tree" view="tree" />
+                    ) : vizMode === "treemap" ? (
+                      <EChartsArtifact jobId={selectedJobId} kind="echarts_tree" view="treemap" />
+                    ) : vizMode === "graph" ? (
+                      <EChartsArtifact jobId={selectedJobId} kind="echarts_graph_full" view="graph" />
+                    ) : (
+                      <>
+                        {subgraphLoading && <LinearProgress />}
+                        {graph ? (
+                          <GraphView jobId={selectedJobId} graph={graph} report={report} summary={summary} />
+                        ) : (
+                          <Box sx={{ p: 2 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              Pick an element from the project explorer to generate a graph slice.
+                            </Typography>
+                          </Box>
+                        )}
+                      </>
+                    )}
+                  </Box>
                 </Box>
+
               </Box>
             ) : job && job.status === "success" && treeLoading ? (
               <Box sx={{ p: 2, display: "flex", alignItems: "center", gap: 2 }}>
