@@ -4,9 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-## [0.1.0] - 2026-02-25
+## [0.0.1] - 2026-02-25
 
 ### Added
+
+- Add precommit hooks and fixes lint failures
+
+- Added docker dev/prod distinction along with some parsing fixes
+
+- Added release makefile recipe
+
+- Added better tools check to makefile recipe
+
+- Added a check to verify version numbers changed in pyproject and packages.json
 
 - Added better styling
 
@@ -41,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Release version 0.0.10
+- Initial commit
 
 - Added auto fit when graph is changed
 
@@ -50,8 +60,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved status chip
 
 - Project upload left panel now retractable
-
-- Release version 0.1.0
 
 - Python 3.14
 
@@ -71,8 +79,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - IGN project explorer refactor
 
-- Release version 0.1.1
-
 - Much better auto layout and zoom in/out
 
 - Nodes can be dragged now, but it feels slow, maybe its the thumbnail rendering
@@ -81,6 +87,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### Fixed
+
+- Fixed run history storage
+
+- Makefile release recipe order changed to tags -> changelog -> commit amend
+
+- Make file release no edit in amend
+
+- Makefile improvements
 
 - Improved makefile macro outputs
 
@@ -108,6 +122,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### Removed
+
+- Removed extra amend comment on makefile release recipe
 
 - Removed old code
 
