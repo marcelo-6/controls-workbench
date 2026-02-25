@@ -1,4 +1,4 @@
-# Controls Workbench (v0.1)
+# Controls Workbench (v0.0.0a)
 
 A local-first desktop companion app (web UI + API) for exploring automation projects.
 
@@ -7,6 +7,8 @@ A local-first desktop companion app (web UI + API) for exploring automation proj
 - **Frontend**: React + MUI + ReactFlow
 - **Backend**: FastAPI + Huey (SQLite-backed queue)
 - **Persistence**: a single `/data` directory (uploads, runs, logs, queue db)
+
+![Current State](docs/demo.gif)
 
 ## Quickstart (Docker)
 
